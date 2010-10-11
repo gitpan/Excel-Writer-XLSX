@@ -1,0 +1,46 @@
+The following is a description of the example files that are provided with 
+Excel::Writer::XLSX. They are intended to demonstrate the different features
+and options of the module.
+
+
+Getting started
+===============
+a_simple.pl             A simple demo of some of the features.
+bug_report.pl           A template for submitting bug reports.
+demo.pl                 A demo of some of the available features.
+formats.pl              All the available formatting on several worksheets.
+regions.pl              A simple example of multiple worksheets.
+stats.pl                Basic formulas and functions.
+
+
+Intermediate
+============
+cgi.pl                  A simple CGI program.
+colors.pl               A demo of the colour palette and named colours.
+diag_border.pl          A simple example of diagonal cell borders.
+indent.pl               An example of cell indentation.
+mod_perl1.pl            A simple mod_perl 1 program.
+mod_perl2.pl            A simple mod_perl 2 program.
+sales.pl                An example of a simple sales spreadsheet.
+stats_ext.pl            Same as stats.pl with external references.
+stocks.pl               Demonstrates conditional formatting.
+write_handler1.pl       Example of extending the write() method. Step 1.
+write_handler2.pl       Example of extending the write() method. Step 2.
+write_handler3.pl       Example of extending the write() method. Step 3.
+write_handler4.pl       Example of extending the write() method. Step 4.
+
+Unicode
+=======
+unicode_2022_jp.pl      Japanese: ISO-2022-JP.
+unicode_8859_11.pl      Thai:     ISO-8859_11.
+unicode_8859_7.pl       Greek:    ISO-8859_7.
+unicode_big5.pl         Chinese:  BIG5.
+unicode_cp1251.pl       Russian:  CP1251.
+unicode_cp1256.pl       Arabic:   CP1256.
+unicode_cyrillic.pl     Russian:  Cyrillic.
+unicode_koi8r.pl        Russian:  KOI8-R.
+unicode_polish_utf8.pl  Polish :  UTF8.
+unicode_shift_jis.pl    Japanese: Shift JIS.
+
+
+
