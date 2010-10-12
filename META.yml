@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Excel-Writer-XLSX
-version:            0.01
+version:            0.02
 abstract:           Create a new file in the Excel 2007+ XLSX format.
 author:
     - John McNamara (jmcnamara@cpan.org)
@@ -10,7 +10,10 @@ configure_requires:
     ExtUtils::MakeMaker:  0
 build_requires:
     ExtUtils::MakeMaker:  0
-requires:  {}
+requires:
+    Archive::Zip:  1.3
+    IO::File:      0
+    XML::Writer:   0.612
 resources:
     MailingList:  http://groups.google.com/group/spreadsheet-writeexcel
     repository:   http://github.com/jmcnamara/excel-xlsx-writer

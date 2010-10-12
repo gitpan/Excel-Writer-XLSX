@@ -30,7 +30,7 @@ use IO::File;
 use utf8;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 ###############################################################################
@@ -137,7 +137,7 @@ __END__
 
 =head1 NAME
 
-Foo - A class for writing the Excel XLSX Theme file.
+Theme - A class for writing the Excel XLSX Theme file.
 
 =head1 SYNOPSIS
 
