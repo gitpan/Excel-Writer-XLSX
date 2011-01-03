@@ -30,7 +30,7 @@ use IO::File;
 use utf8;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 ###############################################################################
@@ -78,14 +78,14 @@ sub _assemble_xml_file {
 #
 # _set_xml_writer()
 #
-# Set the filehandle only. This class doesn't use XML::Writer.
+# Set the filehandle only. This class doesn't use a real XML writer class.
 #
 sub _set_xml_writer {
 
     my $self     = shift;
     my $filename = shift;
 
-    my $fh = new IO::File( $filename, 'w' );
+    my $fh = IO::File->new( $filename, 'w' );
     croak "Couldn't open file $filename for writing.\n" unless $fh;
 
     binmode $fh, ':utf8';
@@ -153,7 +153,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMX, John McNamara.
+© MM-MMXI, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

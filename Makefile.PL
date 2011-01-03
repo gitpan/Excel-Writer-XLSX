@@ -9,11 +9,10 @@ require 5.010;
 my %deps = (
     'Archive::Zip' => 1.30,
     'IO::File'     => 0,
-    'XML::Writer'  => 0.612,
 );
 
 my %resources = (
-    repository  => 'http://github.com/jmcnamara/excel-xlsx-writer',
+    repository  => 'http://github.com/jmcnamara/excel-writer-xlsx',
     MailingList => 'http://groups.google.com/group/spreadsheet-writeexcel',
 );
 
@@ -36,8 +35,20 @@ if ( $ExtUtils::MakeMaker::VERSION ge '6.46' ) {
 
 WriteMakefile(%params);
 
+###############################################################################
+#
+# Add 2 additional make targets for Excel::Writer::XLSX:
+#    mydocs: make the Examples.pm doc.
+#    test_with_xml_writer: test with XML::Writer. See t/lib/TestFunctions.pm
+#
 sub MY::postamble {
     "mydocs:\n"
       . "\tperl -Mblib examples/gen_examples_pod.pl examples "
-      . "> lib/Excel/Writer/XLSX/Examples.pm\n"
+      . "> lib/Excel/Writer/XLSX/Examples.pm\n\n"
+      . "test_with_xml_writer:\n"
+      . qq{\t_EXCEL_WRITER_XLSX_USE_XML_WRITER=1 }
+      . q{PERL_DL_NONLAZY=1 }
+      . q{$(FULLPERLRUN) "-MExtUtils::Command::MM" "-e" }
+      . q{"test_harness($(TEST_VERBOSE), '$(INST_LIB)', '$(INST_ARCHLIB)')" }
+      . q{$(TEST_FILES)} . "\n\n";
 }

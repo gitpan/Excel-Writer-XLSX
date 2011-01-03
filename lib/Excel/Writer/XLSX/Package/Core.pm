@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 ###############################################################################
@@ -74,7 +74,7 @@ sub _assemble_xml_file {
 
     $self->{_writer}->endTag( 'cp:coreProperties' );
 
-    # Close the XML::Writer object and filehandle.
+    # Close the XM writer object and filehandle.
     $self->{_writer}->end();
     $self->{_writer}->getOutput()->close();
 }
@@ -271,7 +271,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMX, John McNamara.
+© MM-MMXI, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

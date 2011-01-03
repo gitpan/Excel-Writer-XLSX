@@ -23,7 +23,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 
 ###############################################################################
@@ -207,7 +207,7 @@ sub _assemble_xml_file {
     # Close the worksheet tag.
     $self->{_writer}->endTag( 'worksheet' );
 
-    # Close the XML::Writer object and filehandle.
+    # Close the XM writer object and filehandle.
     $self->{_writer}->end();
     $self->{_writer}->getOutput()->close();
 }
@@ -1343,7 +1343,7 @@ sub write_col {
 
     # Catch non array refs passed by user.
     if ( ref $_[2] ne 'ARRAY' ) {
-        croak "Not an array ref in call to write_row()$!";
+        croak "Not an array ref in call to write_col()$!";
     }
 
     my $row     = shift;
@@ -3389,13 +3389,6 @@ sub _write_cell {
         $self->_write_cell_value( $value );
         $self->{_writer}->endTag( 'c' );
     }
-    elsif ( $type eq 's' ) {
-        push @attributes, ( 't' => 's' );
-
-        $self->{_writer}->startTag( 'c', @attributes );
-        $self->_write_cell_value( $value );
-        $self->{_writer}->endTag( 'c' );
-    }
     elsif ( $type eq 'f' ) {
         $self->{_writer}->startTag( 'c', @attributes );
         $self->_write_cell_formula( $value );
@@ -3614,7 +3607,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-� MM-MMX, John McNamara.
+© MM-MMXI, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 
