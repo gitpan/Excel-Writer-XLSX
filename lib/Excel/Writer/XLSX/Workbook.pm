@@ -28,7 +28,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
 ###############################################################################
@@ -65,6 +65,7 @@ sub new {
     $self->{_palette}          = [];
     $self->{_font_count}       = 0;
     $self->{_num_format_count} = 0;
+    $self->{_defined_names}    = [];
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
@@ -167,12 +168,12 @@ sub close {
     return if $self->{_fileclosed};
 
     # Test filehandle in case new() failed and the user didn't check.
-    #return unless defined $self->{_filehandle};
+    return unless defined $self->{_filehandle};
 
     $self->{_fileclosed} = 1;
     $self->_store_workbook();
 
-    #return close $self->{_filehandle};
+    return close $self->{_filehandle};
 }
 
 
@@ -1058,6 +1059,53 @@ sub _write_mx_arch_id {
 }
 
 
+##############################################################################
+#
+# _write_defined_names()
+#
+# Write the <definedNames> element.
+#
+sub _write_defined_names {
+
+    my $self = shift;
+
+    next unless @{ $self->{_defined_names} };
+
+
+    $self->{_writer}->startTag( 'definedNames' );
+
+    for my $aref ( @{ $self->{_defined_names} } ) {
+        $self->_write_defined_name( $aref );
+    }
+
+    $self->{_writer}->endTag( 'definedNames' );
+}
+
+
+##############################################################################
+#
+# _write_defined_name()
+#
+# Write the <definedName> element.
+#
+sub _write_defined_name {
+
+    my $self = shift;
+    my $data = shift;
+
+    my $name           = $data->[0];
+    my $local_sheet_id = $data->[1];
+    my $range          = $data->[2];
+
+    my @attributes = (
+        'name'         => $name,
+        'localSheetId' => $local_sheet_id,
+    );
+
+    $self->{_writer}->dataElement( 'definedName', $range, @attributes );
+}
+
+
 1;
 
 
@@ -1070,11 +1118,11 @@ Workbook - A writer class for Excel Workbooks.
 
 =head1 SYNOPSIS
 
-See the documentation for Excel::Writer::XLSX
+See the documentation for L<Excel::Writer::XLSX>
 
 =head1 DESCRIPTION
 
-This module is used in conjunction with Excel::Writer::XLSX.
+This module is used in conjunction with L<Excel::Writer::XLSX>.
 
 =head1 AUTHOR
 

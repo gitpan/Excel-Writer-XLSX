@@ -23,7 +23,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
 ###############################################################################
@@ -78,18 +78,24 @@ sub new {
     $self->{_frozen}      = 0;
     $self->{_selected}    = 0;
 
-    $self->{_paper_size}    = 0x0;
-    $self->{_orientation}   = 0x1;
-    $self->{_header}        = '';
-    $self->{_footer}        = '';
-    $self->{_hcenter}       = 0;
-    $self->{_vcenter}       = 0;
-    $self->{_margin_header}   = 0.50;
-    $self->{_margin_footer}   = 0.50;
-    $self->{_margin_left}   = 0.75;
-    $self->{_margin_right}  = 0.75;
-    $self->{_margin_top}    = 1.00;
-    $self->{_margin_bottom} = 1.00;
+    $self->{_page_setup_changed} = 0;
+    $self->{_paper_size}         = 0;
+    $self->{_orientation}        = 1;
+
+    $self->{_print_options_changed} = 0;
+    $self->{_hcenter}               = 0;
+    $self->{_vcenter}               = 0;
+
+    $self->{_header_footer_changed} = 0;
+    $self->{_header}                = '';
+    $self->{_footer}                = '';
+
+    $self->{_margin_left}        = 0.7;
+    $self->{_margin_right}       = 0.7;
+    $self->{_margin_top}         = 0.75;
+    $self->{_margin_bottom}      = 0.75;
+    $self->{_margin_header}      = 0.3;
+    $self->{_margin_footer}      = 0.3;
 
     $self->{_repeat_rows} = '';
     $self->{_repeat_cols} = '';
@@ -201,8 +207,14 @@ sub _assemble_xml_file {
     # Write the worksheet page_margins.
     $self->_write_page_margins();
 
+    # Write the printOptions element.
+    $self->_write_print_options();
+
     # Write the worksheet page setup.
-    #$self->_write_page_setup();
+    $self->_write_page_setup();
+
+    # Write the headerFooter element.
+    $self->_write_header_footer();
 
     # Write the worksheet extension storage.
     #$self->_write_ext_lst();
@@ -461,7 +473,8 @@ sub set_portrait {
 
     my $self = shift;
 
-    $self->{_orientation} = 1;
+    $self->{_orientation}        = 1;
+    $self->{_page_setup_changed} = 1;
 }
 
 
@@ -475,7 +488,8 @@ sub set_landscape {
 
     my $self = shift;
 
-    $self->{_orientation} = 0;
+    $self->{_orientation}        = 0;
+    $self->{_page_setup_changed} = 1;
 }
 
 
@@ -518,9 +532,13 @@ sub set_tab_color {
 #
 sub set_paper {
 
-    my $self = shift;
+    my $self       = shift;
+    my $paper_size = shift;
 
-    $self->{_paper_size} = $_[0] || 0;
+    if ( $paper_size ) {
+        $self->{_paper_size}         = $paper_size;
+        $self->{_page_setup_changed} = 1;
+    }
 }
 
 
@@ -540,8 +558,9 @@ sub set_header {
         return;
     }
 
-    $self->{_header} = $string;
-    $self->{_margin_header} = $_[1] || 0.50;
+    $self->{_header}                = $string;
+    $self->{_margin_header}         = $_[1] || 0.3;
+    $self->{_header_footer_changed} = 1;
 }
 
 
@@ -561,9 +580,9 @@ sub set_footer {
         return;
     }
 
-
-    $self->{_footer} = $string;
-    $self->{_margin_footer} = $_[1] || 0.50;
+    $self->{_footer}                = $string;
+    $self->{_margin_footer}         = $_[1] || 0.3;
+    $self->{_header_footer_changed} = 1;
 }
 
 
@@ -577,12 +596,8 @@ sub center_horizontally {
 
     my $self = shift;
 
-    if ( defined $_[0] ) {
-        $self->{_hcenter} = $_[0];
-    }
-    else {
-        $self->{_hcenter} = 1;
-    }
+    $self->{_print_options_changed} = 1;
+    $self->{_hcenter}               = 1;
 }
 
 
@@ -596,12 +611,8 @@ sub center_vertically {
 
     my $self = shift;
 
-    if ( defined $_[0] ) {
-        $self->{_vcenter} = $_[0];
-    }
-    else {
-        $self->{_vcenter} = 1;
-    }
+    $self->{_print_options_changed} = 1;
+    $self->{_vcenter}               = 1;
 }
 
 
@@ -662,7 +673,7 @@ sub set_margin_left {
 
     my $self = shift;
 
-    $self->{_margin_left} = defined $_[0] ? $_[0] : 0.75;
+    $self->{_margin_left} = defined $_[0] ? $_[0] : 0.7;
 }
 
 
@@ -676,7 +687,7 @@ sub set_margin_right {
 
     my $self = shift;
 
-    $self->{_margin_right} = defined $_[0] ? $_[0] : 0.75;
+    $self->{_margin_right} = defined $_[0] ? $_[0] : 0.7;
 }
 
 
@@ -690,7 +701,7 @@ sub set_margin_top {
 
     my $self = shift;
 
-    $self->{_margin_top} = defined $_[0] ? $_[0] : 1.00;
+    $self->{_margin_top} = defined $_[0] ? $_[0] : 0.75;
 }
 
 
@@ -704,7 +715,7 @@ sub set_margin_bottom {
 
     my $self = shift;
 
-    $self->{_margin_bottom} = defined $_[0] ? $_[0] : 1.00;
+    $self->{_margin_bottom} = defined $_[0] ? $_[0] : 0.75;
 }
 
 
@@ -3519,25 +3530,20 @@ sub _write_phonetic_pr {
 #
 sub _write_page_margins {
 
-    my $self   = shift;
-    my $left   = 0.7;
-    my $right  = 0.7;
-    my $top    = 0.75;
-    my $bottom = 0.75;
-    my $header = 0.3;
-    my $footer = 0.3;
+    my $self = shift;
 
     my @attributes = (
-        'left'   => $left,
-        'right'  => $right,
-        'top'    => $top,
-        'bottom' => $bottom,
-        'header' => $header,
-        'footer' => $footer,
+        'left'   => $self->{_margin_left},
+        'right'  => $self->{_margin_right},
+        'top'    => $self->{_margin_top},
+        'bottom' => $self->{_margin_bottom},
+        'header' => $self->{_margin_header},
+        'footer' => $self->{_margin_footer},
     );
 
     $self->{_writer}->emptyTag( 'pageMargins', @attributes );
 }
+
 
 ###############################################################################
 #
@@ -3547,18 +3553,25 @@ sub _write_page_margins {
 #
 sub _write_page_setup {
 
-    my $self           = shift;
-    my $paper_size     = 0;
-    my $orientation    = 'portrait';
-    my $horizontal_dpi = 4294967292;
-    my $vertical_dpi   = 4294967292;
+    my $self       = shift;
+    my @attributes = ();
 
-    my @attributes = (
-        'paperSize'     => $paper_size,
-        'orientation'   => $orientation,
-        'horizontalDpi' => $horizontal_dpi,
-        'verticalDpi'   => $vertical_dpi,
-    );
+    return unless $self->{_page_setup_changed};
+
+    # Set paper size.
+    if ( $self->{_paper_size} ) {
+        push @attributes, ( 'paperSize' => $self->{_paper_size} );
+    }
+
+
+    # Set page orientation.
+    if ( $self->{_orientation} == 0 ) {
+        push @attributes, ( 'orientation' => 'landscape' );
+    }
+    else {
+        push @attributes, ( 'orientation' => 'portrait' );
+    }
+
 
     $self->{_writer}->emptyTag( 'pageSetup', @attributes );
 }
@@ -3677,6 +3690,84 @@ sub _write_merge_cell {
 }
 
 
+##############################################################################
+#
+# _write_print_options()
+#
+# Write the <printOptions> element.
+#
+sub _write_print_options {
+
+    my $self       = shift;
+    my @attributes = ();
+
+    return unless $self->{_print_options_changed};
+
+    # Set horizontal centering.
+    if ( $self->{_hcenter} ) {
+        push @attributes, ( 'horizontalCentered' => 1 );
+    }
+
+    # Set vertical centering.
+    if ( $self->{_vcenter} ) {
+        push @attributes, ( 'verticalCentered' => 1 );
+    }
+
+    $self->{_writer}->emptyTag( 'printOptions', @attributes );
+}
+
+
+
+##############################################################################
+#
+# _write_header_footer()
+#
+# Write the <headerFooter> element.
+#
+sub _write_header_footer {
+
+    my $self = shift;
+
+    return unless $self->{_header_footer_changed};
+
+    $self->{_writer}->startTag( 'headerFooter' );
+    $self->_write_odd_header() if $self->{_header};
+    $self->_write_odd_footer() if $self->{_footer};
+    $self->{_writer}->endTag( 'headerFooter' );
+}
+
+
+##############################################################################
+#
+# _write_odd_header()
+#
+# Write the <oddHeader> element.
+#
+sub _write_odd_header {
+
+    my $self = shift;
+    my $data = $self->{_header};
+
+    $self->{_writer}->dataElement( 'oddHeader', $data );
+}
+
+
+##############################################################################
+#
+# _write_odd_footer()
+#
+# Write the <oddFooter> element.
+#
+sub _write_odd_footer {
+
+    my $self = shift;
+    my $data = $self->{_footer};
+
+    $self->{_writer}->dataElement( 'oddFooter', $data );
+}
+
+
+
 1;
 
 
@@ -3689,11 +3780,11 @@ Worksheet - A writer class for Excel Worksheets.
 
 =head1 SYNOPSIS
 
-See the documentation for Excel::Writer::XLSX
+See the documentation for L<Excel::Writer::XLSX>
 
 =head1 DESCRIPTION
 
-This module is used in conjunction with Excel::Writer::XLSX.
+This module is used in conjunction with L<Excel::Writer::XLSX>.
 
 =head1 AUTHOR
 

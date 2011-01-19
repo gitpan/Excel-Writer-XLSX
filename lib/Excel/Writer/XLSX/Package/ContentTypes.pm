@@ -21,7 +21,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
 ###############################################################################
@@ -65,8 +65,8 @@ sub new {
     my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
 
     $self->{_writer}    = undef;
-    $self->{_defaults}  = \@defaults;
-    $self->{_overrides} = \@overrides;
+    $self->{_defaults}  = [@defaults];
+    $self->{_overrides} = [@overrides];
 
     bless $self, $class;
 

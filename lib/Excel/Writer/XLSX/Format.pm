@@ -20,7 +20,7 @@ use Carp;
 
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 our $AUTOLOAD;
 
 
@@ -483,7 +483,9 @@ sub set_merge {
 sub set_bold {
 
     my $self = shift;
-    $self->{_bold} = $_[0] ? 1 : 0;
+    my $bold = shift // 1;
+
+    $self->{_bold} = $bold ? 1 : 0;
 }
 
 
@@ -659,11 +661,11 @@ Format - A class for defining Excel formatting.
 
 =head1 SYNOPSIS
 
-See the documentation for Excel::Writer::XLSX
+See the documentation for L<Excel::Writer::XLSX>
 
 =head1 DESCRIPTION
 
-This module is used in conjunction with Excel::Writer::XLSX.
+This module is used in conjunction with L<Excel::Writer::XLSX>.
 
 =head1 AUTHOR
 
