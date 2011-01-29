@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Package::Styles;
 use Excel::Writer::XLSX::Package::Theme;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 ###############################################################################
@@ -48,10 +48,11 @@ sub new {
     my $class = shift;
 
     my $self = {
-        _package_dir => '',
-        _workbook    => undef,
-        _sheet_names => [],
-        _sheet_count => 0,
+        _package_dir  => '',
+        _workbook     => undef,
+        _sheet_names  => [],
+        _sheet_count  => 0,
+        _named_ranges => [],
     };
 
 
@@ -87,9 +88,10 @@ sub _add_workbook {
     my $workbook    = shift;
     my @sheet_names = @{ $workbook->{_sheetnames} };
 
-    $self->{_workbook}    = $workbook;
-    $self->{_sheet_names} = \@sheet_names;
-    $self->{_sheet_count} = scalar @sheet_names;
+    $self->{_workbook}     = $workbook;
+    $self->{_sheet_names}  = \@sheet_names;
+    $self->{_sheet_count}  = scalar @sheet_names;
+    $self->{_named_ranges} = $workbook->{_named_ranges};
 }
 
 
@@ -175,15 +177,15 @@ sub _write_shared_strings_file {
 
     mkdir $dir . '/xl';
 
-    my $total     =  $self->{_workbook}->{_str_total};
-    my $unique    =  $self->{_workbook}->{_str_unique};
-    my $sst_data  =  $self->{_workbook}->{_str_array};
+    my $total    = $self->{_workbook}->{_str_total};
+    my $unique   = $self->{_workbook}->{_str_unique};
+    my $sst_data = $self->{_workbook}->{_str_array};
 
     return unless $total > 0;
 
-    $sst->_set_string_count($total);
-    $sst->_set_unique_count($unique);
-    $sst->_add_strings($sst_data);
+    $sst->_set_string_count( $total );
+    $sst->_set_unique_count( $unique );
+    $sst->_add_strings( $sst_data );
 
     $sst->_set_xml_writer( $dir . '/xl/sharedStrings.xml' );
     $sst->_assemble_xml_file();
@@ -204,11 +206,25 @@ sub _write_app_file {
 
     mkdir $dir . '/docProps';
 
+    # Add the Worksheet heading pairs.
+    $app->_add_heading_pair( [ 'Worksheets', $self->{_sheet_count} ] );
+
+    # Add the Worksheet parts.
     for my $sheet_name ( @{ $self->{_sheet_names} } ) {
         $app->_add_part_name( $sheet_name );
     }
 
-    $app->_add_heading_pair( [ 'Worksheets', $self->{_sheet_count} ] );
+
+    # Add the Named Range heading pairs.
+    if ( my $range_count = scalar @{ $self->{_named_ranges} } ) {
+        $app->_add_heading_pair( [ 'Named Ranges', $range_count ] );
+    }
+
+    # Add the Named Ranges parts.
+    for my $named_range ( @{ $self->{_named_ranges} } ) {
+        $app->_add_part_name( $named_range );
+    }
+
 
     $app->_set_xml_writer( $dir . '/docProps/app.xml' );
     $app->_assemble_xml_file();
@@ -255,7 +271,7 @@ sub _write_content_types_file {
     }
 
     # Add the sharedString rel if there is string data in the workbook.
-    if ($self->{_workbook}->{_str_total}) {
+    if ( $self->{_workbook}->{_str_total} ) {
         $content->_add_shared_strings();
     }
 

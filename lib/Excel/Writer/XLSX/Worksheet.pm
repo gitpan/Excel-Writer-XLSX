@@ -20,10 +20,11 @@ use warnings;
 use Carp;
 use Excel::Writer::XLSX::Format;
 use Excel::Writer::XLSX::Package::XMLwriter;
-use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
+use Excel::Writer::XLSX::Utility
+  qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 ###############################################################################
@@ -56,22 +57,22 @@ sub new {
     $self->{_str_table}   = $_[6];
     $self->{_1904}        = $_[7];
 
-    $self->{_ext_sheets}  = [];
-    $self->{_fileclosed}  = 0;
+    $self->{_ext_sheets} = [];
+    $self->{_fileclosed} = 0;
 
-    $self->{_xls_rowmax}  = $rowmax;
-    $self->{_xls_colmax}  = $colmax;
-    $self->{_xls_strmax}  = $strmax;
-    $self->{_dim_rowmin}  = undef;
-    $self->{_dim_rowmax}  = undef;
-    $self->{_dim_colmin}  = undef;
-    $self->{_dim_colmax}  = undef;
+    $self->{_xls_rowmax} = $rowmax;
+    $self->{_xls_colmax} = $colmax;
+    $self->{_xls_strmax} = $strmax;
+    $self->{_dim_rowmin} = undef;
+    $self->{_dim_rowmax} = undef;
+    $self->{_dim_colmin} = undef;
+    $self->{_dim_colmax} = undef;
 
-    $self->{_colinfo}     = [];
-    $self->{_selection}   = [ 0, 0 ];
-    $self->{_hidden}      = 0;
-    $self->{_active}      = 0;
-    $self->{_tab_color}   = 0;
+    $self->{_colinfo}   = [];
+    $self->{_selection} = [ 0, 0 ];
+    $self->{_hidden}    = 0;
+    $self->{_active}    = 0;
+    $self->{_tab_color} = 0;
 
     $self->{_panes}       = [];
     $self->{_active_pane} = 3;
@@ -85,24 +86,24 @@ sub new {
     $self->{_print_options_changed} = 0;
     $self->{_hcenter}               = 0;
     $self->{_vcenter}               = 0;
+    $self->{_print_gridlines}       = 0;
+    $self->{_screen_gridlines}      = 1;
+    $self->{_print_headers}         = 0;
 
     $self->{_header_footer_changed} = 0;
     $self->{_header}                = '';
     $self->{_footer}                = '';
 
-    $self->{_margin_left}        = 0.7;
-    $self->{_margin_right}       = 0.7;
-    $self->{_margin_top}         = 0.75;
-    $self->{_margin_bottom}      = 0.75;
-    $self->{_margin_header}      = 0.3;
-    $self->{_margin_footer}      = 0.3;
+    $self->{_margin_left}   = 0.7;
+    $self->{_margin_right}  = 0.7;
+    $self->{_margin_top}    = 0.75;
+    $self->{_margin_bottom} = 0.75;
+    $self->{_margin_header} = 0.3;
+    $self->{_margin_footer} = 0.3;
 
     $self->{_repeat_rows} = '';
     $self->{_repeat_cols} = '';
-
-    $self->{_print_gridlines}  = 0;
-    $self->{_screen_gridlines} = 1;
-    $self->{_print_headers}    = 0;
+    $self->{_print_area}  = '';
 
     $self->{_page_order}     = 0;
     $self->{_black_white}    = 0;
@@ -178,7 +179,7 @@ sub _assemble_xml_file {
     $self->_write_worksheet();
 
     # Write the worksheet properties.
-    #$self->_write_sheet_pr();
+    $self->_write_sheet_pr();
 
     # Write the worksheet dimensions.
     $self->_write_dimension();
@@ -215,6 +216,12 @@ sub _assemble_xml_file {
 
     # Write the headerFooter element.
     $self->_write_header_footer();
+
+    # Write the rowBreaks element.
+    $self->_write_row_breaks();
+
+    # Write the colBreaks element.
+    $self->_write_col_breaks();
 
     # Write the worksheet extension storage.
     #$self->_write_ext_lst();
@@ -454,9 +461,9 @@ sub split_panes {
 
     my $self = shift;
 
-    $self->{_frozen} = 0;
-    $self->{_frozen_no_split}   = 0;
-    $self->{_panes}  = [@_];
+    $self->{_frozen}          = 0;
+    $self->{_frozen_no_split} = 0;
+    $self->{_panes}           = [@_];
 }
 
 # Older method name for backwards compatibility.
@@ -515,10 +522,10 @@ sub set_page_view {
 #
 sub set_tab_color {
 
-    my $self  = shift;
+    my $self = shift;
 
-    my $color = &Spreadsheet::WriteExcel::Format::_get_color($_[0]);
-       $color = 0 if $color == 0x7FFF; # Default color.
+    my $color = &Spreadsheet::WriteExcel::Format::_get_color( $_[0] );
+    $color = 0 if $color == 0x7FFF;    # Default color.
 
     $self->{_tab_color} = $color;
 }
@@ -723,8 +730,7 @@ sub set_margin_bottom {
 #
 # repeat_rows($first_row, $last_row)
 #
-# Set the rows to repeat at the top of each printed page. This is stored as
-# <NamedRange> element.
+# Set the rows to repeat at the top of each printed page.
 #
 sub repeat_rows {
 
@@ -733,20 +739,16 @@ sub repeat_rows {
     my $row_min = $_[0];
     my $row_max = $_[1] || $_[0];    # Second row is optional
 
-    my $area;
 
-    # Convert the zero-indexed rows to R1:R2 notation.
-    if ( $row_min == $row_max ) {
-        $area = 'R' . ( $row_min + 1 );
-    }
-    else {
-        $area = 'R' . ( $row_min + 1 ) . ':' . 'R' . ( $row_max + 1 );
-    }
+    # Convert to 1 based.
+    $row_min++;
+    $row_max++;
 
-    # Build up the print area range "=Sheet2!R1:R2"
+    my $area = '$' . $row_min . ':' . '$' . $row_max;
+
+    # Build up the print titles "Sheet1!$1:$2"
     my $sheetname = $self->_quote_sheetname( $self->{_name} );
     $area = $sheetname . "!" . $area;
-
 
     $self->{_repeat_rows} = $area;
 }
@@ -775,20 +777,15 @@ sub repeat_columns {
     my $col_min = $_[0];
     my $col_max = $_[1] || $_[0];    # Second col is optional
 
-    my $area;
+    # Convert to A notation.
+    $col_min = xl_col_to_name( $_[0], 1 );
+    $col_max = xl_col_to_name( $_[1], 1 );
 
-    # Convert the zero-indexed cols to C1:C2 notation.
-    if ( $col_min == $col_max ) {
-        $area = 'C' . ( $col_min + 1 );
-    }
-    else {
-        $area = 'C' . ( $col_min + 1 ) . ':' . 'C' . ( $col_max + 1 );
-    }
+    my $area = $col_min . ':' . $col_max;
 
     # Build up the print area range "=Sheet2!C1:C2"
     my $sheetname = $self->_quote_sheetname( $self->{_name} );
     $area = $sheetname . "!" . $area;
-
 
     $self->{_repeat_cols} = $area;
 }
@@ -826,7 +823,7 @@ sub print_area {
     # Build up the print area range "=Sheet2!R1C1:R2C1"
     my $area = $self->_convert_name_area( $row1, $col1, $row2, $col2 );
 
-    $self->{_names}->{'Print_Area'} = $area;
+    $self->{_print_area} = $area;
 }
 
 
@@ -954,50 +951,56 @@ sub filter_column {
 #
 # _convert_name_area($first_row, $first_col, $last_row, $last_col)
 #
-# Convert zero indexed rows and columns to the R1C1 range required by worksheet
-# named ranges, eg, "=Sheet2!R1C1:R2C1".
+# Convert zero indexed rows and columns to the format required by worksheet
+# named ranges, eg, "Sheet1!$A$1:$C$13".
 #
 sub _convert_name_area {
 
     my $self = shift;
 
-    my $row1 = $_[0];
-    my $col1 = $_[1];
-    my $row2 = $_[2];
-    my $col2 = $_[3];
+    my $row_num_1 = $_[0];
+    my $col_num_1 = $_[1];
+    my $row_num_2 = $_[2];
+    my $col_num_2 = $_[3];
 
-    my $range1 = '';
-    my $range2 = '';
+    my $range1       = '';
+    my $range2       = '';
+    my $row_col_only = 0;
     my $area;
 
+    # Convert to A1 notation.
+    my $col_char_1 = xl_col_to_name( $col_num_1, 1 );
+    my $col_char_2 = xl_col_to_name( $col_num_2, 1 );
+    my $row_char_1 = '$' . ( $row_num_1 + 1 );
+    my $row_char_2 = '$' . ( $row_num_2 + 1 );
 
     # We need to handle some special cases that refer to rows or columns only.
-    if ( $row1 == 0 and $row2 == $self->{_xls_rowmax} - 1 ) {
-        $range1 = 'C' . ( $col1 + 1 );
-        $range2 = 'C' . ( $col2 + 1 );
+    if ( $row_num_1 == 0 and $row_num_2 == $self->{_xls_rowmax} - 1 ) {
+        $range1       = $col_char_1;
+        $range2       = $col_char_2;
+        $row_col_only = 1;
     }
-    elsif ( $col1 == 0 and $col2 == $self->{_xls_colmax} - 1 ) {
-        $range1 = 'R' . ( $row1 + 1 );
-        $range2 = 'R' . ( $row2 + 1 );
+    elsif ( $col_num_1 == 0 and $col_num_2 == $self->{_xls_colmax} - 1 ) {
+        $range1       = $row_char_1;
+        $range2       = $row_char_2;
+        $row_col_only = 1;
     }
     else {
-        $range1 = 'R' . ( $row1 + 1 ) . 'C' . ( $col1 + 1 );
-        $range2 = 'R' . ( $row2 + 1 ) . 'C' . ( $col2 + 1 );
+        $range1 = $col_char_1 . $row_char_1;
+        $range2 = $col_char_2 . $row_char_2;
     }
 
-
-    # A repeated range is only written once.
-    if ( $range1 eq $range2 ) {
+    # A repeated range is only written once (if it isn't a special case).
+    if ( $range1 eq $range2 && !$row_col_only ) {
         $area = $range1;
     }
     else {
         $area = $range1 . ':' . $range2;
     }
 
-    # Build up the print area range "=Sheet2!R1C1:R2C1"
+    # Build up the print area range "Sheet1!$A$1:$C$13".
     my $sheetname = $self->_quote_sheetname( $self->{_name} );
-    $area = '=' . $sheetname . "!" . $area;
-
+    $area = $sheetname . "!" . $area;
 
     return $area;
 }
@@ -1014,14 +1017,13 @@ sub _convert_name_area {
 #
 sub hide_gridlines {
 
-    my $self   = shift;
-    my $option = $_[0];
-
-    $option = 1 unless defined $option;    # Default to hiding printed gridlines
+    my $self = shift;
+    my $option = $_[0] // 1;    # Default to hiding printed gridlines
 
     if ( $option == 0 ) {
-        $self->{_print_gridlines}  = 1;    # 1 = display, 0 = hide
-        $self->{_screen_gridlines} = 1;
+        $self->{_print_gridlines}       = 1;    # 1 = display, 0 = hide
+        $self->{_screen_gridlines}      = 1;
+        $self->{_print_options_changed} = 1;
     }
     elsif ( $option == 1 ) {
         $self->{_print_gridlines}  = 0;
@@ -1036,20 +1038,6 @@ sub hide_gridlines {
 
 ###############################################################################
 #
-# print_gridlines()
-#
-# Turn on the printed gridlines.
-#
-sub print_gridlines {
-
-    my $self = shift;
-
-    $self->{_print_gridlines} = defined $_[0] ? $_[0] : 1;
-}
-
-
-###############################################################################
-#
 # print_row_col_headers()
 #
 # Set the option to print the row and column headers on the printed page.
@@ -1058,12 +1046,14 @@ sub print_gridlines {
 sub print_row_col_headers {
 
     my $self = shift;
+    my $headers = shift // 1;
 
-    if ( defined $_[0] ) {
-        $self->{_print_headers} = $_[0];
+    if ( $headers ) {
+        $self->{_print_headers}         = 1;
+        $self->{_print_options_changed} = 1;
     }
     else {
-        $self->{_print_headers} = 1;
+        $self->{_print_headers} = 0;
     }
 }
 
@@ -1079,9 +1069,10 @@ sub fit_to_pages {
 
     my $self = shift;
 
-    $self->{_fit_page}   = 1;
-    $self->{_fit_width}  = $_[0] || 1;
-    $self->{_fit_height} = $_[1] || 1;
+    $self->{_fit_page}           = 1;
+    $self->{_fit_width}          = $_[0] || 1;
+    $self->{_fit_height}         = $_[1] || 1;
+    $self->{_page_setup_changed} = 1;
 }
 
 
@@ -1151,10 +1142,11 @@ sub set_print_scale {
         $scale = 100;
     }
 
-    # Turn off "fit to page" option
+    # Turn off "fit to page" option.
     $self->{_fit_page} = 0;
 
-    $self->{_print_scale} = int $scale;
+    $self->{_print_scale}        = int $scale;
+    $self->{_page_setup_changed} = 1;
 }
 
 
@@ -1175,6 +1167,93 @@ sub keep_leading_zeros {
     else {
         $self->{_leading_zeros} = 1;
     }
+}
+
+
+###############################################################################
+#
+# right_to_left()
+#
+# Display the worksheet right to left for some eastern versions of Excel.
+#
+sub right_to_left {
+
+    my $self = shift;
+
+    $self->{_display_arabic} = defined $_[0] ? $_[0] : 1;
+}
+
+
+###############################################################################
+#
+# hide_zero()
+#
+# Hide cell zero values.
+#
+sub hide_zero {
+
+    my $self = shift;
+
+    $self->{_display_zeros} = defined $_[0] ? not $_[0] : 0;
+}
+
+
+###############################################################################
+#
+# print_across()
+#
+# Set the order in which pages are printed.
+#
+sub print_across {
+
+    my $self = shift;
+    my $page_order = shift // 1;
+
+    if ( $page_order ) {
+        $self->{_page_order}         = 1;
+        $self->{_page_setup_changed} = 1;
+    }
+    else {
+        $self->{_page_order} = 0;
+    }
+}
+
+
+###############################################################################
+#
+# set_start_page()
+#
+# Set the start page number.
+#
+sub set_start_page {
+
+    my $self = shift;
+    return unless defined $_[0];
+
+    $self->{_page_start}    = $_[0];
+    $self->{_custom_start}  = 1;
+}
+
+
+###############################################################################
+#
+# set_first_row_column()
+#
+# Set the topmost and leftmost visible row and column.
+# TODO: Document this when tested fully for interaction with panes.
+#
+sub set_first_row_column {
+
+    my $self = shift;
+
+    my $row  = $_[0] || 0;
+    my $col  = $_[1] || 0;
+
+    $row = 65535 if $row > 65535;
+    $col = 255   if $col > 255;
+
+    $self->{_first_row} = $row;
+    $self->{_first_col} = $col;
 }
 
 
@@ -1699,14 +1778,14 @@ sub write_array_formula {
     my $record = 0x0006;           # Record identifier
     my $length;                    # Bytes to follow
 
-    my $row1    = $_[0];    # First row
-    my $col1    = $_[1];    # First column
-    my $row2    = $_[2];    # Last row
-    my $col2    = $_[3];    # Last column
-    my $formula = $_[4];    # The formula text string
-    my $xf      = $_[5];    # The format object.
-    my $value   = $_[6];    # Optional formula value.
-    my $type    = 'a';      # The data type
+    my $row1    = $_[0];           # First row
+    my $col1    = $_[1];           # First column
+    my $row2    = $_[2];           # Last row
+    my $col2    = $_[3];           # Last column
+    my $formula = $_[4];           # The formula text string
+    my $xf      = $_[5];           # The format object.
+    my $value   = $_[6];           # Optional formula value.
+    my $type    = 'a';             # The data type
 
     $xf = _XF( $self, $row1, $col1, $xf );    # The cell format
 
@@ -1737,7 +1816,8 @@ sub write_array_formula {
     $formula =~ s/^{(.*)}$/$1/;
     $formula =~ s/^=//;
 
-    $self->{_table}->[$row1]->[$col1] = [ $type, $formula, $xf, $range, $value ];
+    $self->{_table}->[$row1]->[$col1] =
+      [ $type, $formula, $xf, $range, $value ];
 
     return 0;
 }
@@ -1896,7 +1976,7 @@ sub write_date_time {
     my $col  = $_[1];                              # Zero indexed column
     my $str  = $_[2];
     my $xf   = _XF( $self, $row, $col, $_[3] );    # The cell format
-    my $type = 'n';                                 # The data type
+    my $type = 'n';                                # The data type
 
 
     # Check that row and col are valid and store max and min values
@@ -2221,6 +2301,28 @@ sub _XF {
 
 ###############################################################################
 #
+# _quote_sheetname()
+#
+# Sheetnames used in references should be quoted if they contain any spaces,
+# special characters or if the look like something that isn't a sheet name.
+# TODO. We need to handle more special cases.
+#
+sub _quote_sheetname {
+
+    my $self      = shift;
+    my $sheetname = $_[0];
+
+    if ( $sheetname =~ /^Sheet\d+$/ ) {
+        return $sheetname;
+    }
+    else {
+        return qq('$sheetname');
+    }
+}
+
+
+###############################################################################
+#
 # _substitute_cellref()
 #
 # Substitute an Excel cell reference in A1 notation for  zero based row and
@@ -2309,7 +2411,6 @@ sub _cell_to_rowcol {
 #
 # _sort_pagebreaks()
 #
-#
 # This is an internal method that is used to filter elements of the array of
 # pagebreaks used in the _store_hbreak() and _store_vbreak() methods. It:
 #   1. Removes duplicate entries from the list.
@@ -2320,6 +2421,8 @@ sub _sort_pagebreaks {
 
     my $self = shift;
 
+    return () unless @_;
+
     my %hash;
     my @array;
 
@@ -2327,9 +2430,10 @@ sub _sort_pagebreaks {
     @array = sort { $a <=> $b } keys %hash;    # Numerical sort
     shift @array if $array[0] == 0;            # Remove zero
 
-    # 1000 vertical pagebreaks appears to be an internal Excel 5 limit.
-    # It is slightly higher in Excel 97/200, approx. 1026
-    splice( @array, 1000 ) if ( @array > 1000 );
+    # The Excel 2007 specification says that the maximum number of page breaks
+    # is 1026. However, in practice it is actually 1023.
+    my $max_num_breaks = 1023;
+    splice( @array, $max_num_breaks ) if @array > $max_num_breaks;
 
     return @array;
 }
@@ -2962,12 +3066,33 @@ sub _write_sheet_pr {
     my $published               = 0;
     my $conditional_calculation = 0;
 
+    return unless $self->{_fit_page};
+
     my @attributes = (
-        'published'                         => $published,
-        'enableFormatConditionsCalculation' => $conditional_calculation,
+
+        # 'published'                         => $published,
+        # 'enableFormatConditionsCalculation' => $conditional_calculation,
     );
 
-    $self->{_writer}->emptyTag( 'sheetPr', @attributes );
+    $self->{_writer}->startTag( 'sheetPr', @attributes );
+    $self->_write_page_set_up_pr();
+    $self->{_writer}->endTag( 'sheetPr' );
+}
+
+
+##############################################################################
+#
+# _write_page_set_up_pr()
+#
+# Write the <pageSetUpPr> element.
+#
+sub _write_page_set_up_pr {
+
+    my $self = shift;
+
+    my @attributes = ( 'fitToPage' => 1 );
+
+    $self->{_writer}->emptyTag( 'pageSetUpPr', @attributes );
 }
 
 
@@ -3042,12 +3167,24 @@ sub _write_sheet_view {
 
     my $self             = shift;
     my $tab_selected     = $self->{_selected};
-    my $view             = 'pageLayout';
+    my $gridlines        = $self->{_screen_gridlines};
+    my $view             = $self->{_page_view};
     my $workbook_view_id = 0;
     my @attributes       = ();
 
+    # Hide screen gridlines if required
+    if ( ! $gridlines ) {
+        push @attributes, ( 'showGridLines' => 0 );
+    }
+
+    # Show that the sheet tab is selected.
     if ( $tab_selected ) {
         push @attributes, ( 'tabSelected' => 1 );
+    }
+
+    # Set the page view/layout mode if required.
+    if ( $view ) {
+        push @attributes, ( 'view' => 'pageLayout' );
     }
 
     push @attributes, ( 'workbookViewId' => $workbook_view_id );
@@ -3551,6 +3688,22 @@ sub _write_page_margins {
 #
 # Write the <pageSetup> element.
 #
+# TODO: The following is for reference during development. Remove later.
+#
+# <pageSetup
+#     paperSize="9"
+#     scale="110"
+#     fitToWidth="2"
+#     fitToHeight="2"
+#     pageOrder="overThenDown"
+#     orientation="portrait"
+#     blackAndWhite="1"
+#     draft="1"
+#     horizontalDpi="200"
+#     verticalDpi="200"
+#     r:id="rId1"
+# />
+#
 sub _write_page_setup {
 
     my $self       = shift;
@@ -3563,6 +3716,25 @@ sub _write_page_setup {
         push @attributes, ( 'paperSize' => $self->{_paper_size} );
     }
 
+    # Set the print_scale
+    if ( $self->{_print_scale} != 100 ) {
+        push @attributes, ( 'scale' => $self->{_print_scale} );
+    }
+
+    # Set the "Fit to page" properties. These properties are only set
+    # for values greater than 1 sheet.
+    if ( $self->{_fit_width} > 1 ) {
+        push @attributes, ( 'fitToWidth' => $self->{_fit_width} );
+    }
+
+    if ( $self->{_fit_height} > 1 ) {
+        push @attributes, ( 'fitToHeight' => $self->{_fit_height} );
+    }
+
+    # Set the page print direction.
+    if ( $self->{_page_order} ) {
+        push @attributes, ( 'pageOrder' => "overThenDown" );
+    }
 
     # Set page orientation.
     if ( $self->{_orientation} == 0 ) {
@@ -3713,9 +3885,19 @@ sub _write_print_options {
         push @attributes, ( 'verticalCentered' => 1 );
     }
 
+    # Enable row and column headers.
+    if ( $self->{_print_headers} ) {
+        push @attributes, ( 'headings' => 1 );
+    }
+
+    # Set printed gridlines.
+    if ( $self->{_print_gridlines} ) {
+        push @attributes, ( 'gridLines' => 1 );
+    }
+
+
     $self->{_writer}->emptyTag( 'printOptions', @attributes );
 }
-
 
 
 ##############################################################################
@@ -3766,6 +3948,88 @@ sub _write_odd_footer {
     $self->{_writer}->dataElement( 'oddFooter', $data );
 }
 
+
+##############################################################################
+#
+# _write_row_breaks()
+#
+# Write the <rowBreaks> element.
+#
+sub _write_row_breaks {
+
+    my $self = shift;
+
+    my @page_breaks = $self->_sort_pagebreaks( @{ $self->{_hbreaks} } );
+    my $count       = scalar @page_breaks;
+
+    return unless @page_breaks;
+
+    my @attributes = (
+        'count'            => $count,
+        'manualBreakCount' => $count,
+    );
+
+    $self->{_writer}->startTag( 'rowBreaks', @attributes );
+
+    for my $row_num ( @page_breaks ) {
+        $self->_write_brk( $row_num, 16383 );
+    }
+
+    $self->{_writer}->endTag( 'rowBreaks' );
+}
+
+
+##############################################################################
+#
+# _write_col_breaks()
+#
+# Write the <colBreaks> element.
+#
+sub _write_col_breaks {
+
+    my $self = shift;
+
+    my @page_breaks = $self->_sort_pagebreaks( @{ $self->{_vbreaks} } );
+    my $count       = scalar @page_breaks;
+
+    return unless @page_breaks;
+
+    my @attributes = (
+        'count'            => $count,
+        'manualBreakCount' => $count,
+    );
+
+    $self->{_writer}->startTag( 'colBreaks', @attributes );
+
+    for my $col_num ( @page_breaks ) {
+        $self->_write_brk( $col_num, 1048575 );
+    }
+
+    $self->{_writer}->endTag( 'colBreaks' );
+}
+
+
+##############################################################################
+#
+# _write_brk()
+#
+# Write the <brk> element.
+#
+sub _write_brk {
+
+    my $self                 = shift;
+    my $id                   = shift;
+    my $max                  = shift;
+    my $man                  = 1;
+
+    my @attributes = (
+        'id'                 => $id,
+        'max'                => $max,
+        'man'                => $man,
+    );
+
+    $self->{_writer}->emptyTag( 'brk', @attributes );
+}
 
 
 1;

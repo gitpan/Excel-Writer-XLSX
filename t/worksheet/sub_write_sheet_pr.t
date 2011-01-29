@@ -28,10 +28,10 @@ my $worksheet;
 # Test the _write_sheet_pr() method.
 #
 $caption  = " \tWorksheet: _write_sheet_pr()";
-$expected = '<sheetPr published="0" enableFormatConditionsCalculation="0" />';
+$expected = '<sheetPr><pageSetUpPr fitToPage="1" /></sheetPr>';
 
 $worksheet = _new_worksheet(\$got);
-
+$worksheet->{_fit_page} = 1;
 $worksheet->_write_sheet_pr();
 
 is( $got, $expected, $caption );

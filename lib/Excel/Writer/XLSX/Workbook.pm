@@ -28,7 +28,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 ###############################################################################
@@ -66,6 +66,7 @@ sub new {
     $self->{_font_count}       = 0;
     $self->{_num_format_count} = 0;
     $self->{_defined_names}    = [];
+    $self->{_named_ranges}     = [];
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
@@ -139,6 +140,9 @@ sub _assemble_xml_file {
     # Write the worksheet names and ids.
     $self->_write_sheets();
 
+    # Write the workbook defined names.
+    $self->_write_defined_names();
+
     # Write the workbook calculation properties.
     $self->_write_calc_pr();
 
@@ -187,7 +191,7 @@ sub DESTROY {
 
     my $self = shift;
 
-    local ($@, $!, $^E, $?);
+    local ( $@, $!, $^E, $? );
 
     $self->close() if not $self->{_fileclosed};
 }
@@ -308,7 +312,7 @@ sub add_format {
 
     my $self = shift;
 
-    my @init_data = ( $self->{_xf_index},  @_, );
+    my @init_data = ( $self->{_xf_index}, @_, );
 
 
     my $format = Excel::Writer::XLSX::Format->new( @init_data );
@@ -399,7 +403,6 @@ sub set_custom_color {
 
     return $index + 8;
 }
-
 
 
 ###############################################################################
@@ -550,6 +553,9 @@ sub _store_workbook {
 
     # Set the fill index for the format objects.
     $self->_prepare_fills();
+
+    # Set the defined names for the worsheets such as Print Titles.
+    $self->_prepare_defined_names();
 
     # Package the workbook.
     $packager->_add_workbook( $self );
@@ -732,7 +738,7 @@ sub _prepare_fills {
     my $self = shift;
 
     my %fills;
-    my $index = 2; # Start from 2. See above.
+    my $index = 2;    # Start from 2. See above.
 
     # Add the default fills.
     $fills{'0:0:0'}  = 0;
@@ -748,18 +754,18 @@ sub _prepare_fills {
         #    a pattern they probably wanted a solid fill, so we fill in the
         #    defaults.
         #
-        if ($format->{_pattern}  <= 1 &&
-            $format->{_bg_color} != 0 &&
-            $format->{_fg_color} == 0    )
+        if (   $format->{_pattern} <= 1
+            && $format->{_bg_color} != 0
+            && $format->{_fg_color} == 0 )
         {
             $format->{_fg_color} = $format->{_bg_color};
             $format->{_bg_color} = 0;
             $format->{_pattern}  = 1;
         }
 
-        if ($format->{_pattern}  <= 1 &&
-            $format->{_bg_color} == 0 &&
-            $format->{_fg_color} != 0    )
+        if (   $format->{_pattern} <= 1
+            && $format->{_bg_color} == 0
+            && $format->{_fg_color} != 0 )
         {
             $format->{_bg_color} = 0;
             $format->{_pattern}  = 1;
@@ -784,6 +790,62 @@ sub _prepare_fills {
     }
 
     $self->{_fill_count} = $index;
+}
+
+###############################################################################
+#
+# _prepare_defined_names()
+#
+# Iterate through the worksheets and store any defined names. Stores the
+# defined name for the Workbook.xml and the named ranges for App.xml.
+#
+# TODO. Currently only supports Repeat rows/cols.
+#
+sub _prepare_defined_names {
+
+    my $self = shift;
+
+    for my $sheet ( @{ $self->{_worksheets} } ) {
+
+        # Check for Print Area settings.
+        if ( $sheet->{_print_area} ) {
+
+            my $range = $sheet->{_print_area};
+
+            # Store the defined names.
+            push @{ $self->{_defined_names} },
+              [ '_xlnm.Print_Area', $sheet->{_index}, $range ];
+
+            # Store the named ranges.
+            my $sheetname   = $self->_quote_sheetname( $sheet->{_name} );
+            my $print_title = $sheetname . '!Print_Area';
+
+            push @{ $self->{_named_ranges} }, $print_title;
+        }
+
+        # Check for repeat rows/cols. aka, Print Titles.
+        if ( $sheet->{_repeat_cols} || $sheet->{_repeat_rows} ) {
+            my $range = '';
+
+            if ( $sheet->{_repeat_cols} && $sheet->{_repeat_rows} ) {
+                $range = $sheet->{_repeat_cols} . ',' . $sheet->{_repeat_rows};
+            }
+            else {
+                $range = $sheet->{_repeat_cols} . $sheet->{_repeat_rows};
+            }
+
+            # Store the defined names.
+            push @{ $self->{_defined_names} },
+              [ '_xlnm.Print_Titles', $sheet->{_index}, $range ];
+
+            # Store the named ranges.
+            my $sheetname   = $self->_quote_sheetname( $sheet->{_name} );
+            my $print_title = $sheetname . '!Print_Titles';
+
+            push @{ $self->{_named_ranges} }, $print_title;
+        }
+
+    }
 }
 
 
@@ -811,6 +873,28 @@ sub _store_names {
 
     my $self = shift;
 
+}
+
+
+###############################################################################
+#
+# _quote_sheetname()
+#
+# Sheetnames used in references should be quoted if they contain any spaces,
+# special characters or if the look like something that isn't a sheet name.
+# TODO. We need to handle more special cases.
+#
+sub _quote_sheetname {
+
+    my $self      = shift;
+    my $sheetname = $_[0];
+
+    if ( $sheetname =~ /^Sheet\d+$/ ) {
+        return $sheetname;
+    }
+    else {
+        return qq('$sheetname');
+    }
 }
 
 
@@ -1069,8 +1153,7 @@ sub _write_defined_names {
 
     my $self = shift;
 
-    next unless @{ $self->{_defined_names} };
-
+    return unless @{ $self->{_defined_names} };
 
     $self->{_writer}->startTag( 'definedNames' );
 

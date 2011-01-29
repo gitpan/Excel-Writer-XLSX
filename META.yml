@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Excel-Writer-XLSX
-version:            0.06
+version:            0.07
 abstract:           Create a new file in the Excel 2007+ XLSX format.
 author:
     - John McNamara (jmcnamara@cpan.org)
