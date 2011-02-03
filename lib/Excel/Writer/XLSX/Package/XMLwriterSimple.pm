@@ -20,7 +20,7 @@ use Exporter;
 use Carp;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 #
 # NOTE: this module is a light weight re-implementation of XML::Writer. See
@@ -217,7 +217,7 @@ sub getOutput {
 #
 sub _escape_xml_chars {
 
-    my $str = shift;
+    my $str = shift // '';
 
     return $str if $str !~ m/[&<>"]/;
 

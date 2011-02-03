@@ -28,7 +28,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 
 ###############################################################################
@@ -807,6 +807,19 @@ sub _prepare_defined_names {
 
     for my $sheet ( @{ $self->{_worksheets} } ) {
 
+
+        # Check for Print Area settings.
+        if ( $sheet->{_autofilter} ) {
+
+            my $range  = $sheet->{_autofilter};
+            my $hidden = 1;
+
+            # Store the defined names.
+            push @{ $self->{_defined_names} },
+              [ '_xlnm._FilterDatabase', $sheet->{_index}, $range, $hidden ];
+
+        }
+
         # Check for Print Area settings.
         if ( $sheet->{_print_area} ) {
 
@@ -1179,11 +1192,14 @@ sub _write_defined_name {
     my $name           = $data->[0];
     my $local_sheet_id = $data->[1];
     my $range          = $data->[2];
+    my $hidden         = $data->[3];
 
     my @attributes = (
         'name'         => $name,
         'localSheetId' => $local_sheet_id,
     );
+
+    push @attributes, ( 'hidden' => 1) if $hidden;
 
     $self->{_writer}->dataElement( 'definedName', $range, @attributes );
 }

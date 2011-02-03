@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.07 of Excel::Writer::XLSX, released January 28, 2011.
+This document refers to version 0.08 of Excel::Writer::XLSX, released February 3, 2011.
 
 
 
@@ -635,6 +635,8 @@ The following methods are available through a new worksheet:
     hide_zero()
     set_tab_color()
     autofilter()
+    filter_column()
+    filter_column_list()
 
 
 
@@ -1986,7 +1988,7 @@ To add an autofilter to a worksheet:
     $worksheet->autofilter( 0, 0, 10, 3 );
     $worksheet->autofilter( 'A1:D11' );    # Same as above in A1 notation.
 
-Filter conditions can be applied using the C<filter_column()> method.
+Filter conditions can be applied using the C<filter_column()> or C<filter_column_list()> method.
 
 See the C<autofilter.pl> program in the examples directory of the distro for a more detailed example.
 
@@ -1994,9 +1996,6 @@ See the C<autofilter.pl> program in the examples directory of the distro for a m
 
 
 =head2 filter_column( $column, $expression )
-
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
-
 
 The C<filter_column> method can be used to filter columns in a autofilter range based on simple conditions.
 
@@ -2037,17 +2036,6 @@ Filtering of blank or non-blank data can be achieved by using a value of C<Blank
     'x == Blanks'
     'x == NonBlanks'
 
-Top 10 style filters can be specified using a expression like the following:
-
-    Top|Bottom 1-500 Items|%
-
-For example:
-
-    'Top    10 Items'
-    'Bottom  5 Items'
-    'Top    25 %'
-    'Bottom 50 %'
-
 Excel also allows some simple string matching operations:
 
     'x =~ b*'   # begins with b
@@ -2068,6 +2056,39 @@ The placeholder variable C<x> in the above examples can be replaced by any simpl
 Also, note that a filter condition can only be applied to a column in a range specified by the C<autofilter()> Worksheet method.
 
 See the C<autofilter.pl> program in the examples directory of the distro for a more detailed example.
+
+B<Note> L<Spreadsheet::WriteExcel> supports Top 10 style filters. These aren't currently support by Excel::Writer::XLSX but may be added later.
+
+
+=head2 filter_column_list( $column, @matches )
+
+Prior to Excel 2007 it was only possible to have either 1 or 2 filter conditions such as the ones shown above in the C<filter_column> method.
+
+Excel 2007 introduced a new list style filter where it is possible to specify 1 or more 'or' style criteria. For example if your column contained data for the first six months the initial data would be displayed as all selected as shown on the left. Then if you selected 'March', 'April' and 'May' they would be displayed as shown on the right.
+
+    No criteria selected      Some criteria selected.
+
+    [/] (Select all)          [X] (Select all)
+    [/] January               [ ] January
+    [/] February              [ ] February
+    [/] March                 [/] March
+    [/] April                 [/] April
+    [/] May                   [/] May
+    [/] June                  [ ] June
+
+The C<filter_column_list()> method can be used to represent these types of filters:
+
+    $worksheet->filter_column_list( 'A', 'March', 'April', 'May' );
+
+The C<$column> parameter can either be a zero indexed column number or a string column name.
+
+One or more criteria can be selected:
+
+    $worksheet->filter_column_list( 0, 'March' );
+    $worksheet->filter_column_list( 1, 100, 110, 120, 130 );
+
+B<NOTE:> It isn't sufficient to just specify the filter condition. You must also hide any rows that don't match the filter condition. Rows are hidden using the C<set_row()> C<visible> parameter. C<Excel::Writer::XLSX> cannot do this automatically since it isn't part of the file format. See the C<autofilter.pl> program in the examples directory of the distro for an example.
+e conditions for the filter are specified using simple expressions:
 
 
 
@@ -4541,6 +4562,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
 
     Intermediate
     ============
+    autofilter.pl           Examples of worksheet autofilters.
     array_formula.pl        Examples of how to write array formulas.
     cgi.pl                  A simple CGI program.
     colors.pl               A demo of the colour palette and named colours.
@@ -4655,7 +4677,9 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
     right_to_left()             No
     hide_zero()                 No
     set_tab_color()             No
-    autofilter()                No
+    autofilter()                Yes
+    filter_column()             Yes
+    filter_column_list()        Yes. Not in Spreadsheet::WriteExcel.
     write_utf16be_string()      Deprecated
     write_utf16le_string()      Deprecated
     store_formula()             Deprecated
@@ -4998,16 +5022,20 @@ Either the Perl Artistic Licence L<http://dev.perl.org/licenses/artistic.html> o
 
 John McNamara jmcnamara@cpan.org
 
-    Scott:  Garlic bread is my favourite food. I could honestly eat it for
-            every meal. Or just all the time without even stopping.
-    Ramona: You'd get fat.
-    Scott:  No.
-    Ramona: You'd get totally fat.
-    Scott:  I don't think I'd get fat. Why would I get fat?
-    Ramona: Bread makes you fat. Butter makes you fat.
-    Scott:  Bread makes you fat??
+    You have no fear,
+    You have no fear,
+    But you are much too scared to call.
 
-        -- Scott Pilgrim vs. the World by Bryan Lee O'Malley
+    Fifteen years,
+    Fifteen years,
+    And you're scared you've seen it all.
+
+    You want to be a lost soul just like your father.
+    You don't fit the mould and it's just what he asked for.
+    I was stupidly thinking you'd stay a while after,
+    We'll pretend that nothing happened if that's what you'd rather.
+
+      -- Pull In Emergency
 
 
 

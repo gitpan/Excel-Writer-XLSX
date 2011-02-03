@@ -21,10 +21,10 @@ use Carp;
 use Excel::Writer::XLSX::Format;
 use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility
-  qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name);
+  qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 
 ###############################################################################
@@ -205,6 +205,9 @@ sub _assemble_xml_file {
     # Write the mergeCells element.
     $self->_write_merge_cells();
 
+    # Write the autoFilter element.
+    $self->_write_auto_filter();
+
     # Write the worksheet page_margins.
     $self->_write_page_margins();
 
@@ -229,7 +232,7 @@ sub _assemble_xml_file {
     # Close the worksheet tag.
     $self->{_writer}->endTag( 'worksheet' );
 
-    # Close the XM writer object and filehandle.
+    # Close the XML writer object and filehandle.
     $self->{_writer}->end();
     $self->{_writer}->getOutput()->close();
 }
@@ -846,18 +849,17 @@ sub autofilter {
 
     my ( $row1, $col1, $row2, $col2 ) = @_;
 
+    # Reverse max and min values if necessary.
+    ( $row1, $row2 ) = ( $row2, $row1 ) if $row2 < $row1;
+    ( $col1, $col2 ) = ( $col2, $col1 ) if $col2 < $col1;
 
-    # Build up the print area range "=Sheet2!R1C1:R2C1"
+    # Build up the print area range "Sheet1!$A$1:$C$13".
     my $area = $self->_convert_name_area( $row1, $col1, $row2, $col2 );
+    my $ref = xl_range( $row1, $row2, $col1, $col2 );
 
-
-    # Store the filter as a named range
-    $self->{_names}->{'_FilterDatabase'} = $area;
-
-    # Store the <Autofilter> information
-    $area =~ s/[^!]+!//;    # Remove sheet name
-    $self->{_autofilter} = $area;
-    $self->{_filter_range} = [ $col1, $col2 ];
+    $self->{_autofilter}     = $area;
+    $self->{_autofilter_ref} = $ref;
+    $self->{_filter_range}   = [ $col1, $col2 ];
 }
 
 
@@ -873,77 +875,303 @@ sub filter_column {
     my $col        = $_[0];
     my $expression = $_[1];
 
+    croak "Must call autofilter() before filter_column()"
+      unless $self->{_autofilter};
+    croak "Incorrect number of arguments to filter_column()"
+      unless @_ == 2;
+
 
     # Check for a column reference in A1 notation and substitute.
     if ( $col =~ /^\D/ ) {
         my $col_letter = $col;
-        ( undef, $col ) = xl_cell_to_rowcol( $col . '1' );
+
+        # Convert col ref to a cell ref and then to a col number.
+        ( undef, $col ) = $self->_substitute_cellref( $col . '1' );
 
         croak "Invalid column '$col_letter'" if $col >= $self->{_xls_colmax};
     }
 
-
     my ( $col_first, $col_last ) = @{ $self->{_filter_range} };
 
-    # Ignore column if it is outside filter range.
-    return if $col < $col_first or $col > $col_last;
+    # Reject column if it is outside filter range.
+    if ( $col < $col_first or $col > $col_last ) {
+        croak "Column '$col' outside autofilter() column range "
+          . "($col_first .. $col_last)";
+    }
 
 
-    my @tokens = split ' ', $expression;
+    my @tokens = $self->_extract_filter_tokens( $expression );
 
     croak "Incorrect number of tokens in expression '$expression'"
       unless ( @tokens == 3 or @tokens == 7 );
 
 
-    # We create an array slice to extract the operators from the arguments
-    # and another to exclude the column placeholders.
+    @tokens = $self->_parse_filter_expression( $expression, @tokens );
+
+    # Excel handles single or double custom filters as default filters. We need
+    # to check for them and handle them accordingly.
+    if ( @tokens == 2 && $tokens[0] == 2 ) {
+
+        # Single equality.
+        $self->filter_column_list( $col, $tokens[1] );
+    }
+    elsif (@tokens == 5
+        && $tokens[0] == 2
+        && $tokens[2] == 1
+        && $tokens[3] == 2 )
+    {
+
+        # Double equality with "or" operator.
+        $self->filter_column_list( $col, $tokens[1], $tokens[4] );
+    }
+    else {
+
+        # Non defaul custom filter.
+        $self->{_filter_cols}->{$col} = [@tokens];
+        $self->{_filter_type}->{$col} = 0;
+
+    }
+
+    $self->{_filter_on} = 1;
+}
+
+
+###############################################################################
+#
+# filter_column_list($column, @matches )
+#
+# Set the column filter criteria in Excel 2007 list style.
+#
+sub filter_column_list {
+
+    my $self   = shift;
+    my $col    = shift;
+    my @tokens = @_;
+
+    croak "Must call autofilter() before filter_column_list()"
+      unless $self->{_autofilter};
+    croak "Incorrect number of arguments to filter_column_list()"
+      unless @tokens;
+
+    # Check for a column reference in A1 notation and substitute.
+    if ( $col =~ /^\D/ ) {
+        my $col_letter = $col;
+
+        # Convert col ref to a cell ref and then to a col number.
+        ( undef, $col ) = $self->_substitute_cellref( $col . '1' );
+
+        croak "Invalid column '$col_letter'" if $col >= $self->{_xls_colmax};
+    }
+
+    my ( $col_first, $col_last ) = @{ $self->{_filter_range} };
+
+    # Reject column if it is outside filter range.
+    if ( $col < $col_first or $col > $col_last ) {
+        croak "Column '$col' outside autofilter() column range "
+          . "($col_first .. $col_last)";
+    }
+
+    $self->{_filter_cols}->{$col} = [@tokens];
+    $self->{_filter_type}->{$col} = 1;           # Default style.
+    $self->{_filter_on}           = 1;
+}
+
+
+###############################################################################
+#
+# _extract_filter_tokens($expression)
+#
+# Extract the tokens from the filter expression. The tokens are mainly non-
+# whitespace groups. The only tricky part is to extract string tokens that
+# contain whitespace and/or quoted double quotes (Excel's escaped quotes).
+#
+# Examples: 'x <  2000'
+#           'x >  2000 and x <  5000'
+#           'x = "foo"'
+#           'x = "foo bar"'
+#           'x = "foo "" bar"'
+#
+sub _extract_filter_tokens {
+
+    my $self       = shift;
+    my $expression = $_[0];
+
+    return unless $expression;
+
+    my @tokens = ( $expression =~ /"(?:[^"]|"")*"|\S+/g );    #"
+
+    # Remove leading and trailing quotes and unescape other quotes
+    for ( @tokens ) {
+        s/^"//;                                               #"
+        s/"$//;                                               #"
+        s/""/"/g;                                             #"
+    }
+
+    return @tokens;
+}
+
+
+###############################################################################
+#
+# _parse_filter_expression(@token)
+#
+# Converts the tokens of a possibly conditional expression into 1 or 2
+# sub expressions for further parsing.
+#
+# Examples:
+#          ('x', '==', 2000) -> exp1
+#          ('x', '>',  2000, 'and', 'x', '<', 5000) -> exp1 and exp2
+#
+sub _parse_filter_expression {
+
+    my $self       = shift;
+    my $expression = shift;
+    my @tokens     = @_;
+
+    # The number of tokens will be either 3 (for 1 expression)
+    # or 7 (for 2  expressions).
     #
-    # Index: 0 1 2  3  4 5 6
-    #        x > 2
-    #        x > 2 and x < 6
+    if ( @tokens == 7 ) {
 
-    my @slice1 = @tokens == 3 ? ( 1 ) : ( 1, 3, 5 );
-    my @slice2 = @tokens == 3 ? ( 1, 2 ) : ( 1, 2, 3, 5, 6 );
+        my $conditional = $tokens[3];
 
+        if ( $conditional =~ /^(and|&&)$/ ) {
+            $conditional = 0;
+        }
+        elsif ( $conditional =~ /^(or|\|\|)$/ ) {
+            $conditional = 1;
+        }
+        else {
+            croak "Token '$conditional' is not a valid conditional "
+              . "in filter expression '$expression'";
+        }
+
+        my @expression_1 =
+          $self->_parse_filter_tokens( $expression, @tokens[ 0, 1, 2 ] );
+        my @expression_2 =
+          $self->_parse_filter_tokens( $expression, @tokens[ 4, 5, 6 ] );
+
+        return ( @expression_1, $conditional, @expression_2 );
+    }
+    else {
+        return $self->_parse_filter_tokens( $expression, @tokens );
+    }
+}
+
+
+###############################################################################
+#
+# _parse_filter_tokens(@token)
+#
+# Parse the 3 tokens of a filter expression and return the operator and token.
+#
+sub _parse_filter_tokens {
+
+    my $self       = shift;
+    my $expression = shift;
+    my @tokens     = @_;
 
     my %operators = (
-        '==' => 'Equals',
-        '='  => 'Equals',
-        '=~' => 'Equals',
-        'eq' => 'Equals',
+        '==' => 2,
+        '='  => 2,
+        '=~' => 2,
+        'eq' => 2,
 
-        '!=' => 'DoesNotEqual',
-        '!~' => 'DoesNotEqual',
-        'ne' => 'DoesNotEqual',
-        '<>' => 'DoesNotEqual',
+        '!=' => 5,
+        '!~' => 5,
+        'ne' => 5,
+        '<>' => 5,
 
-        '>'  => 'GreaterThan',
-        '>=' => 'GreaterThanOrEqual',
-        '<'  => 'LessThan',
-        '<=' => 'LessThanOrEqual',
-
-        'and' => 'AutoFilterAnd',
-        'or'  => 'AutoFilterOr',
-        '&&'  => 'AutoFilterAnd',
-        '||'  => 'AutoFilterOr',
+        '<'  => 1,
+        '<=' => 3,
+        '>'  => 4,
+        '>=' => 6,
     );
 
+    my $operator = $operators{ $tokens[1] };
+    my $token    = $tokens[2];
 
-    for ( @tokens[@slice1] ) {
-        if ( not exists $operators{$_} ) {
-            croak "Unknown operator '$_'";
+
+    # Special handling of "Top" filter expressions.
+    if ( $tokens[0] =~ /^top|bottom$/i ) {
+
+        my $value = $tokens[1];
+
+        if (   $value =~ /\D/
+            or $value < 1
+            or $value > 500 )
+        {
+            croak "The value '$value' in expression '$expression' "
+              . "must be in the range 1 to 500";
+        }
+
+        $token = lc $token;
+
+        if ( $token ne 'items' and $token ne '%' ) {
+            croak "The type '$token' in expression '$expression' "
+              . "must be either 'items' or '%'";
+        }
+
+        if ( $tokens[0] =~ /^top$/i ) {
+            $operator = 30;
+        }
+        else {
+            $operator = 32;
+        }
+
+        if ( $tokens[2] eq '%' ) {
+            $operator++;
+        }
+
+        $token = $value;
+    }
+
+
+    if ( not $operator and $tokens[0] ) {
+        croak "Token '$tokens[1]' is not a valid operator "
+          . "in filter expression '$expression'";
+    }
+
+
+    # Special handling for Blanks/NonBlanks.
+    if ( $token =~ /^blanks|nonblanks$/i ) {
+
+        # Only allow Equals or NotEqual in this context.
+        if ( $operator != 2 and $operator != 5 ) {
+            croak "The operator '$tokens[1]' in expression '$expression' "
+              . "is not valid in relation to Blanks/NonBlanks'";
+        }
+
+        $token = lc $token;
+
+        # The operator should always be 2 (=) to flag a "simple" equality in
+        # the binary record. Therefore we convert <> to =.
+        if ( $token eq 'blanks' ) {
+            if ( $operator == 5 ) {
+                $token    = ' ';
+            }
+        }
+        else {
+            if ( $operator == 5 ) {
+                $operator = 2;
+                $token    = 'blanks';
+            }
+            else {
+                $operator = 5;
+                $token    = ' ';
+            }
         }
     }
 
 
-    for ( @tokens[@slice1] ) {
-        for my $key ( keys %operators ) {
-            s/^\Q$key\E$/$operators{$key}/i;
-        }
+    # if the string token contains an Excel match character then change the
+    # operator type to indicate a non "simple" equality.
+    if ( $operator == 2 and $token =~ /[*?]/ ) {
+        $operator = 22;
     }
 
-    $self->{_filter_cols}->{$col} = [ @tokens[@slice2] ];
-    $self->{_filter_on} = 1;
+
+    return ( $operator, $token );
 }
 
 
@@ -1230,8 +1458,8 @@ sub set_start_page {
     my $self = shift;
     return unless defined $_[0];
 
-    $self->{_page_start}    = $_[0];
-    $self->{_custom_start}  = 1;
+    $self->{_page_start}   = $_[0];
+    $self->{_custom_start} = 1;
 }
 
 
@@ -1246,8 +1474,8 @@ sub set_first_row_column {
 
     my $self = shift;
 
-    my $row  = $_[0] || 0;
-    my $col  = $_[1] || 0;
+    my $row = $_[0] || 0;
+    my $col = $_[1] || 0;
 
     $row = 65535 if $row > 65535;
     $col = 255   if $col > 255;
@@ -1603,7 +1831,7 @@ sub write_string {
     }
 
 
-    # TODO
+    # Add the string to the shared string table if it isn't already there.
     if ( not exists ${ $self->{_str_table} }->{$str} ) {
         ${ $self->{_str_table} }->{$str} = ${ $self->{_str_unique} }++;
     }
@@ -2722,70 +2950,6 @@ sub _store_panes {
 
 ###############################################################################
 #
-# _write_names()
-#
-# Write the <Worksheet> <Names> element.
-#
-sub _write_names {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-
-
-    if (    not keys %{ $self->{_names} }
-        and not $self->{_repeat_rows}
-        and not $self->{_repeat_cols} )
-    {
-        return;
-    }
-
-
-    if ( $self->{_repeat_rows} or $self->{_repeat_cols} ) {
-        $self->{_names}->{Print_Titles} = '='
-          . join ',',
-          grep { /\S/ } $self->{_repeat_cols},
-          $self->{_repeat_rows};
-    }
-
-
-    # Sort the <NamedRange> elements lexically and case insensitively.
-    for my $key ( sort { lc $a cmp lc $b } keys %{ $self->{_names} } ) {
-
-        my @attributes = (
-            'NamedRange', 'ss:Name', $key, 'ss:RefersTo',
-            $self->{_names}->{$key}
-        );
-
-        # Temp workaround to hide _FilterDatabase.
-        # TODO. make this configurable later.
-        if ( $key eq '_FilterDatabase' ) {
-            push @attributes, 'ss:Hidden' => 1;
-        }
-    }
-}
-
-
-###############################################################################
-#
-# _store_pagebreaks()
-#
-# Store horizontal and vertical pagebreaks.
-#
-sub _store_pagebreaks {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-
-    return
-      if not @{ $self->{_hbreaks} }
-          and not @{ $self->{_vbreaks} };
-}
-
-
-###############################################################################
-#
 # _store_protect()
 #
 # Set the Biff PROTECT record to indicate that the worksheet is protected.
@@ -2962,67 +3126,6 @@ sub _options_changed {
 
 ###############################################################################
 #
-# _write_autofilter()
-#
-# Write the <AutoFilter> element.
-#
-sub _write_autofilter {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-
-    return unless $self->{_autofilter};
-
-}
-
-
-###############################################################################
-#
-# _write_autofilter_column()
-#
-# Write the <AutoFilterColumn> and <AutoFilterCondition> elements. The format
-# of this is a little complicated.
-#
-sub _write_autofilter_column {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-    my @tokens;
-
-
-    my ( $col_first, $col_last ) = @{ $self->{_filter_range} };
-
-    my $prev_col = $col_first - 1;
-
-
-    for my $col ( $col_first .. $col_last ) {
-
-        # Check for rows with defined filter criteria.
-        if ( defined $self->{_filter_cols}->{$col} ) {
-
-            # Excel allows either one or two filter conditions
-
-            # Single criterion.
-            if ( @tokens == 2 ) {
-                my ( $op, $value ) = @tokens;
-
-            }
-
-            # Double criteria, either 'And' or 'Or'.
-            else {
-                my ( $op1, $value1, $op2, $op3, $value3 ) = @tokens;
-
-            }
-
-        }
-    }
-}
-
-
-###############################################################################
-#
 # XML writing methods.
 #
 ###############################################################################
@@ -3062,21 +3165,24 @@ sub _write_worksheet {
 #
 sub _write_sheet_pr {
 
-    my $self                    = shift;
-    my $published               = 0;
-    my $conditional_calculation = 0;
+    my $self       = shift;
+    my @attributes = ();
 
-    return unless $self->{_fit_page};
+    if ( !$self->{_fit_page} && !$self->{_filter_on} ) {
+        return;
+    }
 
-    my @attributes = (
+    push @attributes, ( 'filterMode' => 1 ) if $self->{_filter_on};
 
-        # 'published'                         => $published,
-        # 'enableFormatConditionsCalculation' => $conditional_calculation,
-    );
+    if ( $self->{_fit_page} ) {
+        $self->{_writer}->startTag( 'sheetPr', @attributes );
+        $self->_write_page_set_up_pr();
+        $self->{_writer}->endTag( 'sheetPr' );
 
-    $self->{_writer}->startTag( 'sheetPr', @attributes );
-    $self->_write_page_set_up_pr();
-    $self->{_writer}->endTag( 'sheetPr' );
+    }
+    else {
+        $self->{_writer}->emptyTag( 'sheetPr', @attributes );
+    }
 }
 
 
@@ -3173,7 +3279,7 @@ sub _write_sheet_view {
     my @attributes       = ();
 
     # Hide screen gridlines if required
-    if ( ! $gridlines ) {
+    if ( !$gridlines ) {
         push @attributes, ( 'showGridLines' => 0 );
     }
 
@@ -3688,7 +3794,7 @@ sub _write_page_margins {
 #
 # Write the <pageSetup> element.
 #
-# TODO: The following is for reference during development. Remove later.
+# The following is an example taken from Excel.
 #
 # <pageSetup
 #     paperSize="9"
@@ -4017,18 +4123,242 @@ sub _write_col_breaks {
 #
 sub _write_brk {
 
-    my $self                 = shift;
-    my $id                   = shift;
-    my $max                  = shift;
-    my $man                  = 1;
+    my $self = shift;
+    my $id   = shift;
+    my $max  = shift;
+    my $man  = 1;
 
     my @attributes = (
-        'id'                 => $id,
-        'max'                => $max,
-        'man'                => $man,
+        'id'  => $id,
+        'max' => $max,
+        'man' => $man,
     );
 
     $self->{_writer}->emptyTag( 'brk', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_auto_filter()
+#
+# Write the <autoFilter> element.
+#
+sub _write_auto_filter {
+
+    my $self = shift;
+    my $ref  = $self->{_autofilter_ref};
+
+    return unless $ref;
+
+    my @attributes = ( 'ref' => $ref );
+
+    if ( $self->{_filter_on} ) {
+
+        # Autofilter defined active filters.
+        $self->{_writer}->startTag( 'autoFilter', @attributes );
+
+        $self->_write_autofilters();
+
+        $self->{_writer}->endTag( 'autoFilter' );
+
+    }
+    else {
+
+        # Autofilter defined without active filters.
+        $self->{_writer}->emptyTag( 'autoFilter', @attributes );
+    }
+
+}
+
+
+###############################################################################
+#
+# _write_autofilters()
+#
+# Function to iterate through the columns that form part of an autofilter
+# range and write the appropriate filters.
+#
+sub _write_autofilters {
+
+    my $self = shift;
+
+    my ( $col1, $col2 ) = @{ $self->{_filter_range} };
+
+    for my $col ( $col1 .. $col2 ) {
+
+        # Skip if column doesn't have an active filter.
+        next unless $self->{_filter_cols}->{$col};
+
+        # Retrieve the filter tokens and write the autofilter records.
+        my @tokens = @{ $self->{_filter_cols}->{$col} };
+        my $type   = $self->{_filter_type}->{$col};
+
+        $self->_write_filter_column( $col, $type, \@tokens );
+    }
+}
+
+
+##############################################################################
+#
+# _write_filter_column()
+#
+# Write the <filterColumn> element.
+#
+sub _write_filter_column {
+
+    my $self    = shift;
+    my $col_id  = shift;
+    my $type    = shift;
+    my $filters = shift;
+
+    my @attributes = ( 'colId' => $col_id );
+
+    $self->{_writer}->startTag( 'filterColumn', @attributes );
+
+
+    if ( $type == 1 ) {
+
+        # Type == 1 is the new XLSX style filter.
+        $self->_write_filters( @$filters );
+
+    }
+    else {
+
+        # Type == 0 is the classic "custom" filter.
+        $self->_write_custom_filters( @$filters );
+    }
+
+    $self->{_writer}->endTag( 'filterColumn' );
+}
+
+
+##############################################################################
+#
+# _write_filters()
+#
+# Write the <filters> element.
+#
+sub _write_filters {
+
+    my $self    = shift;
+    my @filters = @_;
+
+    if ( @filters == 1 && $filters[0] eq 'blanks' ) {
+
+        # Special case for blank cells only.
+        $self->{_writer}->emptyTag( 'filters', 'blank' => 1 );
+    }
+    else {
+
+        # General case.
+        $self->{_writer}->startTag( 'filters' );
+
+        for my $filter ( @filters ) {
+            $self->_write_filter( $filter );
+        }
+
+        $self->{_writer}->endTag( 'filters' );
+    }
+}
+
+
+##############################################################################
+#
+# _write_filter()
+#
+# Write the <filter> element.
+#
+sub _write_filter {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'filter', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_custom_filters()
+#
+# Write the <customFilters> element.
+#
+sub _write_custom_filters {
+
+    my $self   = shift;
+    my @tokens = @_;
+
+    if ( @tokens == 2 ) {
+
+        # One filter expression only.
+        $self->{_writer}->startTag( 'customFilters' );
+        $self->_write_custom_filter( @tokens );
+        $self->{_writer}->endTag( 'customFilters' );
+
+    }
+    else {
+
+        # Two filter expressions.
+
+        my @attributes;
+
+        # Check if the "join" operand is "and" or "or".
+        if ( $tokens[2] == 0 ) {
+            @attributes = ( 'and' => 1 );
+        }
+        else {
+            @attributes = ( 'and' => 0 );
+        }
+
+        # Write the two custom filters.
+        $self->{_writer}->startTag( 'customFilters', @attributes );
+        $self->_write_custom_filter( $tokens[0], $tokens[1] );
+        $self->_write_custom_filter( $tokens[3], $tokens[4] );
+        $self->{_writer}->endTag( 'customFilters' );
+    }
+}
+
+
+##############################################################################
+#
+# _write_custom_filter()
+#
+# Write the <customFilter> element.
+#
+sub _write_custom_filter {
+
+    my $self       = shift;
+    my $operator   = shift;
+    my $val        = shift;
+    my @attributes = ();
+
+    my %operators = (
+        1  => 'lessThan',
+        2  => 'equal',
+        3  => 'lessThanOrEqual',
+        4  => 'greaterThan',
+        5  => 'notEqual',
+        6  => 'greaterThanOrEqual',
+        22 => 'equal',
+    );
+
+
+    # Convert the operator from a number to a descriptive string.
+    if ( defined $operators{$operator} ) {
+        $operator = $operators{$operator};
+    }
+    else {
+        croak "Unknown operator = $operator\n";
+    }
+
+    # The 'equal' operator is the default attibute and isn't stored.
+    push @attributes, ( 'operator' => $operator ) unless $operator eq 'equal';
+    push @attributes, ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'customFilter', @attributes );
 }
 
 
