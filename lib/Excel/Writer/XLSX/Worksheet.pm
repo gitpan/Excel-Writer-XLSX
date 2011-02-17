@@ -24,7 +24,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 
 ###############################################################################
@@ -68,15 +68,14 @@ sub new {
     $self->{_dim_colmin} = undef;
     $self->{_dim_colmax} = undef;
 
-    $self->{_colinfo}   = [];
-    $self->{_selection} = [ 0, 0 ];
-    $self->{_hidden}    = 0;
-    $self->{_active}    = 0;
-    $self->{_tab_color} = 0;
+    $self->{_colinfo}    = [];
+    $self->{_selections} = [];
+    $self->{_hidden}     = 0;
+    $self->{_active}     = 0;
+    $self->{_tab_color}  = 0;
 
     $self->{_panes}       = [];
     $self->{_active_pane} = 3;
-    $self->{_frozen}      = 0;
     $self->{_selected}    = 0;
 
     $self->{_page_setup_changed} = 0;
@@ -428,12 +427,14 @@ sub set_selection {
 
     my $self = shift;
 
+    return; # TODO.
+
     # Check for a cell reference in A1 notation and substitute row and column
     if ( $_[0] =~ /^\D/ ) {
         @_ = $self->_substitute_cellref( @_ );
     }
 
-    $self->{_selection} = [@_];
+    $self->{_selections} = [@_];
 }
 
 
@@ -441,22 +442,26 @@ sub set_selection {
 #
 # freeze_panes()
 #
-# Set panes and mark them as frozen. See also _store_panes().
+# Set panes and mark them as frozen.
 #
 sub freeze_panes {
 
     my $self = shift;
 
-    # Check for a cell reference in A1 notation and substitute row and column
+    return unless @_;
+
+    # Check for a cell reference in A1 notation and substitute row and column.
     if ( $_[0] =~ /^\D/ ) {
         @_ = $self->_substitute_cellref( @_ );
     }
 
-    # Extra flag indicated a split and freeze.
-    $self->{_frozen_no_split} = 0 if $_[4];
+    my $row      = shift;
+    my $col      = shift // 0;
+    my $top_row  = shift // $row;
+    my $left_col = shift // $col;
+    my $type     = shift // 0;
 
-    $self->{_frozen} = 1;
-    $self->{_panes}  = [@_];
+    $self->{_panes} = [ $row, $col, $top_row, $left_col, $type ];
 }
 
 
@@ -464,15 +469,14 @@ sub freeze_panes {
 #
 # split_panes()
 #
-# Set panes and mark them as split. See also _store_panes().
+# Set panes and mark them as split.
 #
 sub split_panes {
 
     my $self = shift;
 
-    $self->{_frozen}          = 0;
-    $self->{_frozen_no_split} = 0;
-    $self->{_panes}           = [@_];
+    # Call freeze panes but add the type flag for split panes.
+    $self->freeze_panes( @_[ 0 .. 3 ], 2 );
 }
 
 # Older method name for backwards compatibility.
@@ -2904,70 +2908,6 @@ sub _store_externsheet {
 
 ###############################################################################
 #
-# _store_panes()
-#
-#
-# Writes the Excel BIFF PANE record.
-# The panes can either be frozen or thawed (unfrozen).
-# Frozen panes are specified in terms of a integer number of rows and columns.
-# Thawed panes are specified in terms of Excel's units for rows and columns.
-#
-sub _store_panes {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self   = shift;
-    my $record = 0x0041;    # Record identifier
-    my $length = 0x000A;    # Number of bytes to follow
-
-    my $y = $_[0] || 0;     # Vertical split position
-    my $x = $_[1] || 0;     # Horizontal split position
-    my $rwTop   = $_[2];    # Top row visible
-    my $colLeft = $_[3];    # Leftmost column visible
-    my $pnnAct  = $_[4];    # Active pane
-
-
-    # Code specific to frozen or thawed panes.
-    if ( $self->{_frozen} ) {
-
-        # Set default values for $rwTop and $colLeft
-        $rwTop   = $y unless defined $rwTop;
-        $colLeft = $x unless defined $colLeft;
-    }
-    else {
-
-        # Set default values for $rwTop and $colLeft
-        $rwTop   = 0 unless defined $rwTop;
-        $colLeft = 0 unless defined $colLeft;
-
-        # Convert Excel's row and column units to the internal units.
-        # The default row height is 12.75
-        # The default column width is 8.43
-        # The following slope and intersection values were interpolated.
-        #
-        $y = 20 * $y + 255;
-        $x = 113.879 * $x + 390;
-    }
-
-
-    # Determine which pane should be active. There is also the undocumented
-    # option to override this should it be necessary: may be removed later.
-    #
-    if ( not defined $pnnAct ) {
-        $pnnAct = 0 if ( $x != 0 && $y != 0 );    # Bottom right
-        $pnnAct = 1 if ( $x != 0 && $y == 0 );    # Top right
-        $pnnAct = 2 if ( $x == 0 && $y != 0 );    # Bottom left
-        $pnnAct = 3 if ( $x == 0 && $y == 0 );    # Top left
-    }
-
-    $self->{_active_pane} = $pnnAct;              # Used in _store_selection
-
-    # TODO Update for SpreadsheetML format
-}
-
-
-###############################################################################
-#
 # _store_protect()
 #
 # Set the Biff PROTECT record to indicate that the worksheet is protected.
@@ -3337,11 +3277,31 @@ sub _write_sheet_view {
 
     push @attributes, ( 'workbookViewId' => $workbook_view_id );
 
-    $self->{_writer}->emptyTag( 'sheetView', @attributes );
+    if ( @{ $self->{_panes} } ) {
+        $self->{_writer}->startTag( 'sheetView', @attributes );
+        $self->_write_panes();
+        $self->_write_selections();
+        $self->{_writer}->endTag( 'sheetView' );
+    }
+    else {
+        $self->{_writer}->emptyTag( 'sheetView', @attributes );
+    }
+}
 
-    # TODO. Add selection later.
-    #$self->_write_selection();
-    #$self->{_writer}->endTag( 'sheetView' );
+
+###############################################################################
+#
+# _write_selections()
+#
+# Write the <selection> elements.
+#
+sub _write_selections {
+
+    my $self = shift;
+
+    for my $selection ( @{ $self->{_selections} } ) {
+        $self->_write_selection( @$selection );
+    }
 }
 
 
@@ -3354,13 +3314,14 @@ sub _write_sheet_view {
 sub _write_selection {
 
     my $self        = shift;
-    my $active_cell = 'A1';
-    my $sqref       = 'A1';
+    my $pane        = shift;
+    my $active_cell = shift;
+    my $sqref       = shift;
+    my @attributes  = ();
 
-    my @attributes = (
-        'activeCell' => $active_cell,
-        'sqref'      => $sqref,
-    );
+    push @attributes, ( 'pane'       => $pane )        if $pane;
+    push @attributes, ( 'activeCell' => $active_cell ) if $active_cell;
+    push @attributes, ( 'sqref'      => $sqref )       if $sqref;
 
     $self->{_writer}->emptyTag( 'selection', @attributes );
 }
@@ -4534,6 +4495,191 @@ sub _write_hyperlink_internal {
     $self->{_writer}->emptyTag( 'hyperlink', @attributes );
 }
 
+
+##############################################################################
+#
+# _write_panes()
+#
+# Write the frozen or split <pane> elements.
+#
+sub _write_panes {
+
+    my $self  = shift;
+    my @panes = @{ $self->{_panes} };
+
+    return unless @panes;
+
+    if ( $panes[4] == 2 ) {
+        $self->_write_split_panes( @panes );
+    }
+    else {
+        $self->_write_frozen_panes( @panes );
+    }
+}
+
+
+##############################################################################
+#
+# _write_frozen_panes()
+#
+# Write the <pane> element for frozen panes.
+#
+sub _write_frozen_panes {
+
+    my $self = shift;
+    my @attributes;
+
+    my ( $row, $col, $top_row, $left_col, $type ) = @_;
+
+    my $y_split       = $row;
+    my $x_split       = $col;
+    my $top_left_cell = xl_rowcol_to_cell( $top_row, $left_col );
+    my $active_pane;
+    my $state;
+
+    # Set the active pane.
+    if ( $row && $col ) {
+        $active_pane = 'bottomRight';
+
+        my $row_cell = xl_rowcol_to_cell( $top_row, 0 );
+        my $col_cell = xl_rowcol_to_cell( 0,        $left_col );
+
+        push @{ $self->{_selections} },
+          (
+            [ 'topRight',   $col_cell, $col_cell ],
+            [ 'bottomLeft', $row_cell, $row_cell ],
+            ['bottomRight']
+          );
+    }
+    elsif ( $col ) {
+        $active_pane = 'topRight';
+        push @{ $self->{_selections} }, ['topRight'];
+    }
+    else {
+        $active_pane = 'bottomLeft';
+        push @{ $self->{_selections} }, ['bottomLeft'];
+    }
+
+    # Set the pane type.
+    if ( $type == 0 ) {
+        $state = 'frozen';
+    }
+    elsif ( $type == 1 ) {
+        $state = 'frozenSplit';
+    }
+    else {
+        $state = 'split';
+    }
+
+
+    push @attributes, ( 'xSplit' => $x_split ) if $x_split;
+    push @attributes, ( 'ySplit' => $y_split ) if $y_split;
+
+    push @attributes, ( 'topLeftCell' => $top_left_cell );
+    push @attributes, ( 'activePane'  => $active_pane );
+    push @attributes, ( 'state'       => $state );
+
+
+    $self->{_writer}->emptyTag( 'pane', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_split_panes()
+#
+# Write the <pane> element for split panes.
+#
+sub _write_split_panes {
+
+    my $self = shift;
+    my @attributes;
+
+    my ( $row, $col, $top_row, $left_col, $type ) = @_;
+
+    my $y_split = $row;
+    my $x_split = $col;
+
+    # Convert the row and col to 1/20 twip units with padding.
+    $y_split = int( 20 * $y_split + 300 ) if $y_split;
+    $x_split = $self->_calculate_x_split_width( $x_split ) if $x_split;
+
+    # For non-explicit topLeft definitions, estimate the cell offset based
+    # on the pixels dimensions. This is only a workaround and doesn't take
+    # adjusted cell dimensions into account.
+    if ( $top_row == $row && $left_col == $col ) {
+        $top_row  = int( 0.5 + ( $y_split - 300 ) / 20 / 15 );
+        $left_col = int( 0.5 + ( $x_split - 390 ) / 20 / 3 * 4 / 64 );
+    }
+
+    my $top_left_cell = xl_rowcol_to_cell( $top_row, $left_col );
+
+    # Set the Cell selections.
+    if ( $row && $col ) {
+
+        my $row_cell = xl_rowcol_to_cell( $top_row, 0 );
+        my $col_cell = xl_rowcol_to_cell( 0,        $left_col );
+
+        push @{ $self->{_selections} },
+          (
+            [ 'topRight',    $col_cell,      $col_cell ],
+            [ 'bottomLeft',  $row_cell,      $row_cell ],
+            [ 'bottomRight', $top_left_cell, $top_left_cell ]
+          );
+    }
+    elsif ( $col ) {
+
+        push @{ $self->{_selections} },
+          [ 'topRight', $top_left_cell, $top_left_cell ];
+    }
+    else {
+
+        push @{ $self->{_selections} },
+          [ 'bottomLeft', $top_left_cell, $top_left_cell ];
+    }
+
+    push @attributes, ( 'xSplit' => $x_split ) if $x_split;
+    push @attributes, ( 'ySplit' => $y_split ) if $y_split;
+    push @attributes, ( 'topLeftCell' => $top_left_cell );
+
+    $self->{_writer}->emptyTag( 'pane', @attributes );
+}
+
+
+##############################################################################
+#
+# _calculate_x_split_width()
+#
+# Convert column width from user units to pane split width.
+#
+sub _calculate_x_split_width {
+
+    my $self = shift;
+    my $width = shift;
+
+    my $max_digit_width = 7;    # For Calabri 11.
+    my $padding         = 5;
+    my $pixels;
+
+    # Convert to pixels.
+    if ( $width < 1 ) {
+        $pixels = int( $width * 12 + 0.5 );
+    }
+    else {
+        $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
+    }
+
+    # Convert to points.
+    my $points = $pixels * 3 / 4;
+
+    # Convert to twips (twentieths of a point).
+    my $twips = $points * 20;
+
+    # Add offset/padding.
+    $width = $twips + 390;
+
+    return $width;
+}
 
 
 1;
