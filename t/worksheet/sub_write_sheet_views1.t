@@ -25,17 +25,17 @@ my $worksheet;
 
 ###############################################################################
 #
-# Test the _write_xml_declaration() method.
+# 1. Test the _write_sheet_views() method.
 #
-$caption  = " \tWorksheet: _write_xml_declaration()";
-$expected = qq(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n);
+$caption  = " \tWorksheet: _write_sheet_views()";
+$expected = '<sheetViews><sheetView tabSelected="1" workbookViewId="0" /></sheetViews>';
 
 $worksheet = _new_worksheet(\$got);
 
-$worksheet->_write_xml_declaration();
+$worksheet->select();
+$worksheet->_write_sheet_views();
 
 is( $got, $expected, $caption );
 
+
 __END__
-
-

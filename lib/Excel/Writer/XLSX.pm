@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.11 of Excel::Writer::XLSX, released February 17, 2011.
+This document refers to version 0.12 of Excel::Writer::XLSX, released February 19, 2011.
 
 
 
@@ -1662,8 +1662,6 @@ Note, the worksheet level password in Excel provides very weak protection. It do
 
 
 =head2 set_selection( $first_row, $first_col, $last_row, $last_col )
-
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
 
 This method can be used to specify which cell or cells are selected in a worksheet. The most common requirement is to select a single cell, in which case C<$last_row> and C<$last_col> can be omitted. The active cell within a selected range is determined by the order in which C<$first> and C<$last> are specified. It is also possible to specify a cell or a range using A1 notation. See the note about L<Cell notation>.
 
@@ -4638,7 +4636,7 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
     hide()                      Yes
     set_first_sheet()           Yes
     protect()                   No
-    set_selection()             No
+    set_selection()             Yes
     set_row()                   Yes/Partial, see docs.
     set_column()                Yes/Partial, see docs.
     outline_settings()          No
@@ -4717,9 +4715,30 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
     set_left_color()            Yes
     set_right_color()           Yes
 
-All non-deprecated methods will be supported in time.
+All non-deprecated methods will be supported in time. The missing features will be added in approximately the following order which is based on work effort and desirability:
 
+    set_zoom()
+    right_to_left()
+    hide_zero()
+    set_custom_color()
+    set_tab_color()
+    protect()
 
+    define_name()
+    insert_image()
+
+    set_properties()
+    set_tempdir()
+    set_1904()
+    set_locked()
+    set_hidden()
+
+    write_comment()
+    data_validation()
+    outline_settings()
+    add_chart()
+
+If you would care to you can sponsor a feature to move it up the list. See L<DONATIONS and SPONSORSHIP>
 
 
 =head1 DOWNLOADING
@@ -4938,9 +4957,9 @@ There is a Google group for discussing and asking questions about Excel::Writer:
 
 
 
-=head1 DONATIONS
+=head1 DONATIONS and SPONSORSHIP
 
-If you'd care to donate to the Excel::Writer::XLSX project, you can do so via PayPal: L<http://tinyurl.com/7ayes>.
+If you'd care to donate to the Excel::Writer::XLSX project or sponsor a new feature, you can do so via PayPal: L<http://tinyurl.com/7ayes>.
 
 
 
@@ -4995,20 +5014,25 @@ Either the Perl Artistic Licence L<http://dev.perl.org/licenses/artistic.html> o
 
 John McNamara jmcnamara@cpan.org
 
-    You have no fear,
-    You have no fear,
-    But you are much too scared to call.
 
-    Fifteen years,
-    Fifteen years,
-    And you're scared you've seen it all.
+    I walked bang into him, said Mr Dedalus for the fourth time,
+    just at the corner of the square.
 
-    You want to be a lost soul just like your father.
-    You don't fit the mould and it's just what he asked for.
-    I was stupidly thinking you'd stay a while after,
-    We'll pretend that nothing happened if that's what you'd rather.
+    Then I suppose, said Mrs Dedalus, he will be able to arrange
+    it. I mean about Belvedere.
 
-      -- Pull In Emergency
+    Of course he will, said Mr Dedalus. Don't I tell you he's
+    provincial of the order now?
+
+    I never liked the idea of sending him to the christian brothers
+    myself, said Mrs Dedalus.
+
+    Christian brothers be damned! said Mr Dedalus. Is it with Paddy
+    Stink and Micky Mud? No, let him stick to the jesuits in God's
+    name since he began with them. They'll be of service to him in
+    after years. Those are the fellows that can get you a position.
+
+      -- James Joyce. A Portrait Of The Artist As A Young Man.
 
 
 
