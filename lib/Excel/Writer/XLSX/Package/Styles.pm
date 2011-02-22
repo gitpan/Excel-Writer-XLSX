@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 
 ###############################################################################
@@ -49,6 +49,7 @@ sub new {
     $self->{_num_format_count} = 0;
     $self->{_border_count}     = 0;
     $self->{_fill_count}       = 0;
+    $self->{_custom_colors}    = [];
 
     bless $self, $class;
 
@@ -100,6 +101,9 @@ sub _assemble_xml_file {
     # Write the tableStyles element.
     $self->_write_table_styles();
 
+    # Write the colors element.
+    $self->_write_colors();
+
     # Close the style sheet tag.
     $self->{_writer}->endTag( 'styleSheet' );
 
@@ -124,6 +128,7 @@ sub _set_style_properties {
     $self->{_num_format_count} = shift;
     $self->{_border_count}     = shift;
     $self->{_fill_count}       = shift;
+    $self->{_custom_colors}    = shift;
 }
 
 
@@ -716,13 +721,15 @@ sub _write_style_xf {
 #
 sub _write_xf {
 
-    my $self       = shift;
-    my $format     = shift;
-    my $num_fmt_id = $format->{_num_format_index};
-    my $font_id    = $format->{_font_index};
-    my $fill_id    = $format->{_fill_index};
-    my $border_id  = $format->{_border_index};
-    my $xf_id      = 0;
+    my $self        = shift;
+    my $format      = shift;
+    my $num_fmt_id  = $format->{_num_format_index};
+    my $font_id     = $format->{_font_index};
+    my $fill_id     = $format->{_fill_index};
+    my $border_id   = $format->{_border_index};
+    my $xf_id       = 0;
+    my $has_align   = 0;
+    my $has_protect = 0;
 
     my @attributes = (
         'numFmtId' => $num_fmt_id,
@@ -755,30 +762,32 @@ sub _write_xf {
     # Check if XF format has alignment properties set.
     my ( $apply_align, @align ) = $format->get_align_properties();
 
-    # Check for cell protection properties.
-    my @protection = $format->get_protection_properties();
+    # Check if an alignment sub-element should be written.
+    $has_align = 1 if $apply_align && @align;
 
+    # We can also have applyAlignment without a sub-element.
     if ( $apply_align ) {
         push @attributes, ( 'applyAlignment' => 1 );
     }
 
-    # TODO. Add protection sub element
-    #if ( @protection ) {
-    #    push @attributes, ( 'applyProtection' => 1 );
-    #}
+    # Check for cell protection properties.
+    my @protection = $format->get_protection_properties();
 
-    if ( $apply_align && @align ) {
+    if ( @protection ) {
+        push @attributes, ( 'applyProtection' => 1 );
+        $has_protect = 1;
+    }
+
+    # Write XF with sub-elements if required.
+    if ( $has_align || $has_protect ) {
         $self->{_writer}->startTag( 'xf', @attributes );
-        $self->{_writer}->emptyTag( 'alignment', @align );
-        $self->{_writer}->endTag( 'xf');
+        $self->{_writer}->emptyTag( 'alignment',  @align )      if $has_align;
+        $self->{_writer}->emptyTag( 'protection', @protection ) if $has_protect;
+        $self->{_writer}->endTag( 'xf' );
     }
     else {
         $self->{_writer}->emptyTag( 'xf', @attributes );
     }
-
-
-
-
 }
 
 
@@ -864,6 +873,47 @@ sub _write_table_styles {
     );
 
     $self->{_writer}->emptyTag( 'tableStyles', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_colors()
+#
+# Write the <colors> element.
+#
+sub _write_colors {
+
+    my $self          = shift;
+    my @custom_colors = @{ $self->{_custom_colors} };
+
+    return unless @custom_colors;
+
+    $self->{_writer}->startTag( 'colors' );
+    $self->_write_mru_colors( @custom_colors );
+    $self->{_writer}->endTag( 'colors' );
+}
+
+
+##############################################################################
+#
+# _write_mru_colors()
+#
+# Write the <mruColors> element.
+#
+sub _write_mru_colors {
+
+    my $self          = shift;
+    my @custom_colors = @_;
+
+    $self->{_writer}->startTag( 'mruColors' );
+
+    # Write the custom colors in reverse order.
+    for my $color ( reverse @custom_colors ) {
+        $self->_write_color( 'rgb' => $color );
+    }
+
+    $self->{_writer}->endTag( 'mruColors' );
 }
 
 

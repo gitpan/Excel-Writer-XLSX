@@ -28,7 +28,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 
 ###############################################################################
@@ -67,6 +67,7 @@ sub new {
     $self->{_num_format_count} = 0;
     $self->{_defined_names}    = [];
     $self->{_named_ranges}     = [];
+    $self->{_custom_colors}    = [];
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
@@ -292,6 +293,7 @@ sub add_worksheet {
         \$self->{_str_table},
 
         $self->{_1904},
+        $self->{_palette},
     );
 
     my $worksheet = Excel::Writer::XLSX::Worksheet->new( @init_data );
@@ -398,8 +400,12 @@ sub set_custom_color {
 
     $index -= 8;    # Adjust colour index (wingless dragonfly)
 
-    # Set the RGB value
-    $aref->[$index] = [ $red, $green, $blue, 0 ];
+    # Set the RGB value.
+    my @rgb = ( $red, $green, $blue );
+    $aref->[$index] = [@rgb];
+
+    # Store the custom colors for the style.xml file.
+    push @{ $self->{_custom_colors} }, sprintf "FF%02X%02X%02X", @rgb;
 
     return $index + 8;
 }

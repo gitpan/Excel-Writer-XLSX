@@ -14,6 +14,7 @@ examples/diag_border.pl
 examples/formats.pl
 examples/gen_examples_pod.pl
 examples/headers.pl
+examples/hide_sheet.pl
 examples/hyperlink1.pl
 examples/hyperlink2.pl
 examples/indent.pl
@@ -26,11 +27,14 @@ examples/merge6.pl
 examples/mod_perl1.pl
 examples/mod_perl2.pl
 examples/panes.pl
+examples/protection.pl
 examples/regions.pl
+examples/right_to_left.pl
 examples/sales.pl
 examples/stats.pl
 examples/stats_ext.pl
 examples/stocks.pl
+examples/tab_colors.pl
 examples/unicode_2022_jp.pl
 examples/unicode_2022_jp.txt
 examples/unicode_8859_11.pl
@@ -102,11 +106,13 @@ t/package/styles/sub_write_cell_style.t
 t/package/styles/sub_write_cell_style_xfs.t
 t/package/styles/sub_write_cell_styles.t
 t/package/styles/sub_write_cell_xfs.t
+t/package/styles/sub_write_colors.t
 t/package/styles/sub_write_default_fill.t
 t/package/styles/sub_write_dxfs.t
 t/package/styles/sub_write_fills.t
 t/package/styles/sub_write_font.t
 t/package/styles/sub_write_fonts.t
+t/package/styles/sub_write_mru_colors.t
 t/package/styles/sub_write_num_fmt.t
 t/package/styles/sub_write_num_fmts.t
 t/package/styles/sub_write_style_sheet.t
@@ -122,6 +128,7 @@ t/regression/autofilter03.t
 t/regression/autofilter04.t
 t/regression/autofilter05.t
 t/regression/autofilter06.t
+t/regression/custom_colors01.t
 t/regression/fit_to_page01.t
 t/regression/fit_to_page02.t
 t/regression/fit_to_page03.t
@@ -171,6 +178,7 @@ t/regression/repeat04.t
 t/regression/repeat05.t
 t/regression/simple01.t
 t/regression/simple02.t
+t/regression/tab_color01.t
 t/regression/xlsx_files/autofilter00.xlsx
 t/regression/xlsx_files/autofilter01.xlsx
 t/regression/xlsx_files/autofilter02.xlsx
@@ -178,6 +186,7 @@ t/regression/xlsx_files/autofilter03.xlsx
 t/regression/xlsx_files/autofilter04.xlsx
 t/regression/xlsx_files/autofilter05.xlsx
 t/regression/xlsx_files/autofilter06.xlsx
+t/regression/xlsx_files/custom_colors01.xlsx
 t/regression/xlsx_files/fit_to_pages01.xlsx
 t/regression/xlsx_files/fit_to_pages02.xlsx
 t/regression/xlsx_files/fit_to_pages03.xlsx
@@ -227,6 +236,7 @@ t/regression/xlsx_files/repeat04.xlsx
 t/regression/xlsx_files/repeat05.xlsx
 t/regression/xlsx_files/simple01.xlsx
 t/regression/xlsx_files/simple02.xlsx
+t/regression/xlsx_files/tab_color01.xlsx
 t/utility/xl_col_to_name.t
 t/utility/xl_range.t
 t/utility/xl_rowcol_to_cell.t
@@ -283,6 +293,7 @@ t/worksheet/sub_write_sheet_calc_pr.t
 t/worksheet/sub_write_sheet_data.t
 t/worksheet/sub_write_sheet_format_pr.t
 t/worksheet/sub_write_sheet_pr.t
+t/worksheet/sub_write_sheet_protection.t
 t/worksheet/sub_write_sheet_view.t
 t/worksheet/sub_write_sheet_views1.t
 t/worksheet/sub_write_sheet_views2.t
@@ -293,6 +304,7 @@ t/worksheet/sub_write_sheet_views6.t
 t/worksheet/sub_write_sheet_views7.t
 t/worksheet/sub_write_sheet_views8.t
 t/worksheet/sub_write_sheet_views9.t
+t/worksheet/sub_write_tab_color.t
 t/worksheet/sub_write_worksheet.t
 t/worksheet/sub_write_xml_declaration.t
 t/worksheet/worksheet_01.t

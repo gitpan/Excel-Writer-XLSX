@@ -24,7 +24,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 
 ###############################################################################
@@ -56,6 +56,7 @@ sub new {
     $self->{_str_unique}  = $_[5];
     $self->{_str_table}   = $_[6];
     $self->{_1904}        = $_[7];
+    $self->{_palette}     = $_[8];
 
     $self->{_ext_sheets} = [];
     $self->{_fileclosed} = 0;
@@ -123,9 +124,10 @@ sub new {
     $self->{_set_cols} = {};
     $self->{_set_rows} = {};
 
-    $self->{_zoom}        = 100;
-    $self->{_print_scale} = 100;
-
+    $self->{_zoom}          = 100;
+    $self->{_print_scale}   = 100;
+    $self->{_right_to_left} = 0;
+    $self->{_show_zeros}    = 1;
     $self->{_leading_zeros} = 0;
 
     $self->{_outline_row_level} = 0;
@@ -197,6 +199,9 @@ sub _assemble_xml_file {
 
     # Write the worksheet data such as rows columns and cells.
     $self->_write_sheet_data();
+
+    # Write the sheetProtection element.
+    $self->_write_sheet_protection();
 
     # Write the worksheet calculation properties.
     #$self->_write_sheet_calc_pr();
@@ -344,18 +349,94 @@ sub set_first_sheet {
 
 ###############################################################################
 #
-# protect($password)
+# protect( $password )
 #
-# Set the worksheet protection flag to prevent accidental modification and to
-# hide formulas if the locked and hidden format properties have been set.
+# Set the worksheet protection flags to prevent modification of worksheet
+# objects.
 #
 sub protect {
 
-    my $self = shift;
+    my $self     = shift;
+    my $password = shift // '';
+    my $options  = shift // {};
 
-    $self->{_protect} = 1;
+    if ( $password ne '' ) {
+        $password = $self->_encode_password( $password );
+    }
 
-    # No password in XML format.
+    # Default values for objects that can be protected.
+    my %defaults = (
+        objects               => 0,
+        scenarios             => 0,
+        format_cells          => 0,
+        format_columns        => 0,
+        format_rows           => 0,
+        insert_columns        => 0,
+        insert_rows           => 0,
+        insert_hyperlinks     => 0,
+        delete_columns        => 0,
+        delete_rows           => 0,
+        select_locked_cells   => 1,
+        sort                  => 0,
+        autofilter            => 0,
+        pivot_tables          => 0,
+        select_unlocked_cells => 1,
+    );
+
+
+    # Overwrite the defaults with user specified values.
+    for my $key ( keys %{$options} ) {
+
+        if ( exists $defaults{$key} ) {
+            $defaults{$key} = $options->{$key};
+        }
+        else {
+            carp "Unknown protection object: $key\n";
+        }
+    }
+
+    # Set the password after the user defined values.
+    $defaults{password} = $password;
+
+    $self->{_protect} = \%defaults;
+}
+
+
+###############################################################################
+#
+# _encode_password($password)
+#
+# Based on the algorithm provided by Daniel Rentz of OpenOffice.
+#
+sub _encode_password {
+
+    use integer;
+
+    my $self      = shift;
+    my $plaintext = $_[0];
+    my $password;
+    my $count;
+    my @chars;
+    my $i = 0;
+
+    $count = @chars = split //, $plaintext;
+
+    foreach my $char ( @chars ) {
+        my $low_15;
+        my $high_15;
+        $char    = ord( $char ) << ++$i;
+        $low_15  = $char & 0x7fff;
+        $high_15 = $char & 0x7fff << 15;
+        $high_15 = $high_15 >> 15;
+        $char    = $low_15 | $high_15;
+    }
+
+    $password = 0x0000;
+    $password ^= $_ for @chars;
+    $password ^= $count;
+    $password ^= 0xCE4B;
+
+    return sprintf "%X", $password;
 }
 
 
@@ -460,7 +541,14 @@ sub set_selection {
             ( $col_first, $col_last ) = ( $col_last, $col_first );
         }
 
-        $sqref = xl_range( $row_first, $col_first, $row_last, $col_last );
+        # If the first and last cell are the same write a single cell.
+        if ( ( $row_first == $row_last ) && ( $col_first == $col_last ) ) {
+            $sqref = $active_cell;
+        }
+        else {
+            $sqref = xl_range( $row_first, $col_first, $row_last, $col_last );
+        }
+
     }
     else {
 
@@ -576,14 +664,12 @@ sub set_page_view {
 #
 # set_tab_color()
 #
-# Set the colour of the worksheet colour.
+# Set the colour of the worksheet tab.
 #
 sub set_tab_color {
 
-    my $self = shift;
-
-    my $color = &Spreadsheet::WriteExcel::Format::_get_color( $_[0] );
-    $color = 0 if $color == 0x7FFF;    # Default color.
+    my $self  = shift;
+    my $color = &Excel::Writer::XLSX::Format::_get_color( $_[0] );
 
     $self->{_tab_color} = $color;
 }
@@ -1346,7 +1432,7 @@ sub print_row_col_headers {
 # fit_to_pages($width, $height)
 #
 # Store the vertical and horizontal number of pages that will define the
-# maximum area printed. See also _store_setup() and _store_wsbool() below.
+# maximum area printed.
 #
 sub fit_to_pages {
 
@@ -1389,7 +1475,7 @@ sub set_v_pagebreaks {
 
 ###############################################################################
 #
-# set_zoom($scale)
+# set_zoom( $scale )
 #
 # Set the worksheet zoom factor.
 #
@@ -1463,7 +1549,7 @@ sub right_to_left {
 
     my $self = shift;
 
-    $self->{_display_arabic} = defined $_[0] ? $_[0] : 1;
+    $self->{_right_to_left} = defined $_[0] ? $_[0] : 1;
 }
 
 
@@ -1477,7 +1563,7 @@ sub hide_zero {
 
     my $self = shift;
 
-    $self->{_display_zeros} = defined $_[0] ? not $_[0] : 0;
+    $self->{_show_zeros} = defined $_[0] ? not $_[0] : 0;
 }
 
 
@@ -2561,6 +2647,30 @@ sub merge_range {
 
 ###############################################################################
 #
+# _get_palette_color()
+#
+# Convert from an Excel internal colour index to a XML style #RRGGBB index
+# based on the default or user defined values in the Workbook palette.
+#
+sub _get_palette_color {
+
+    my $self    = shift;
+    my $index   = shift;
+    my $palette = $self->{_palette};
+
+    # Adjust the colour index.
+    $index -= 8;
+
+    # Palette is passed in from the Workbook class.
+    my @rgb = @{ $palette->[$index] };
+
+    # TODO Add the alpha part to the RGB.
+    return sprintf "FF%02X%02X%02X", @rgb;
+}
+
+
+###############################################################################
+#
 # _XF()
 #
 # Returns an index to the XF record in the workbook.
@@ -3149,17 +3259,17 @@ sub _write_sheet_pr {
     my $self       = shift;
     my @attributes = ();
 
-    if ( !$self->{_fit_page} && !$self->{_filter_on} ) {
+    if ( !$self->{_fit_page} && !$self->{_filter_on} && !$self->{_tab_color} ) {
         return;
     }
 
     push @attributes, ( 'filterMode' => 1 ) if $self->{_filter_on};
 
-    if ( $self->{_fit_page} ) {
+    if ( $self->{_fit_page} || $self->{_tab_color} ) {
         $self->{_writer}->startTag( 'sheetPr', @attributes );
+        $self->_write_tab_color();
         $self->_write_page_set_up_pr();
         $self->{_writer}->endTag( 'sheetPr' );
-
     }
     else {
         $self->{_writer}->emptyTag( 'sheetPr', @attributes );
@@ -3176,6 +3286,8 @@ sub _write_sheet_pr {
 sub _write_page_set_up_pr {
 
     my $self = shift;
+
+    return unless $self->{_fit_page};
 
     my @attributes = ( 'fitToPage' => 1 );
 
@@ -3250,12 +3362,30 @@ sub _write_sheet_views {
 #
 # Write the <sheetView> element.
 #
+# Sample structure:
+#     <sheetView
+#         showGridLines="0"
+#         showRowColHeaders="0"
+#         showZeros="0"
+#         rightToLeft="1"
+#         tabSelected="1"
+#         showRuler="0"
+#         showOutlineSymbols="0"
+#         view="pageLayout"
+#         zoomScale="121"
+#         zoomScaleNormal="121"
+#         workbookViewId="0"
+#      />
+#
 sub _write_sheet_view {
 
     my $self             = shift;
-    my $tab_selected     = $self->{_selected};
     my $gridlines        = $self->{_screen_gridlines};
+    my $show_zeros       = $self->{_show_zeros};
+    my $right_to_left    = $self->{_right_to_left};
+    my $tab_selected     = $self->{_selected};
     my $view             = $self->{_page_view};
+    my $zoom             = $self->{_zoom};
     my $workbook_view_id = 0;
     my @attributes       = ();
 
@@ -3264,14 +3394,31 @@ sub _write_sheet_view {
         push @attributes, ( 'showGridLines' => 0 );
     }
 
+    # Hide zeroes in cells.
+    if ( !$show_zeros ) {
+        push @attributes, ( 'showZeros' => 0 );
+    }
+
+    # Display worksheet right to left for Hebrew, Arabic and others.
+    if ( $right_to_left ) {
+        push @attributes, ( 'rightToLeft' => 1 );
+    }
+
     # Show that the sheet tab is selected.
     if ( $tab_selected ) {
         push @attributes, ( 'tabSelected' => 1 );
     }
 
     # Set the page view/layout mode if required.
+    # TODO. Add pageBreakPreview mode when requested.
     if ( $view ) {
         push @attributes, ( 'view' => 'pageLayout' );
+    }
+
+    # Set the zoom level.
+    if ( $zoom != 100 ) {
+        push @attributes, ( 'zoomScale' => $zoom ) unless $view;
+        push @attributes, ( 'zoomScaleNormal' => $zoom );
     }
 
     push @attributes, ( 'workbookViewId' => $workbook_view_id );
@@ -4667,7 +4814,7 @@ sub _write_split_panes {
     push @attributes, ( 'xSplit' => $x_split ) if $x_split;
     push @attributes, ( 'ySplit' => $y_split ) if $y_split;
     push @attributes, ( 'topLeftCell' => $top_left_cell );
-    push @attributes, ( 'activePane'  => $active_pane ) if $has_selection;
+    push @attributes, ( 'activePane' => $active_pane ) if $has_selection;
 
     $self->{_writer}->emptyTag( 'pane', @attributes );
 }
@@ -4706,6 +4853,71 @@ sub _calculate_x_split_width {
     $width = $twips + 390;
 
     return $width;
+}
+
+
+##############################################################################
+#
+# _write_tab_color()
+#
+# Write the <tabColor> element.
+#
+sub _write_tab_color {
+
+    my $self        = shift;
+    my $color_index = $self->{_tab_color};
+
+    return unless $color_index;
+
+    my $rgb = $self->_get_palette_color( $color_index );
+
+    my @attributes = ( 'rgb' => $rgb, );
+
+    $self->{_writer}->emptyTag( 'tabColor', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_sheet_protection()
+#
+# Write the <sheetProtection> element.
+#
+sub _write_sheet_protection {
+
+    my $self = shift;
+    my @attributes;
+
+    return unless $self->{_protect};
+
+    my %arg = %{ $self->{_protect} };
+
+    push @attributes, ( "password" => $arg{password} ) if $arg{password};
+    push @attributes, ( "sheet" => 1 );
+
+    push @attributes, ( "objects"          => 1 ) if !$arg{objects};
+    push @attributes, ( "scenarios"        => 1 ) if !$arg{scenarios};
+    push @attributes, ( "formatCells"      => 0 ) if $arg{format_cells};
+    push @attributes, ( "formatColumns"    => 0 ) if $arg{format_columns};
+    push @attributes, ( "formatRows"       => 0 ) if $arg{format_rows};
+    push @attributes, ( "insertColumns"    => 0 ) if $arg{insert_columns};
+    push @attributes, ( "insertRows"       => 0 ) if $arg{insert_rows};
+    push @attributes, ( "insertHyperlinks" => 0 ) if $arg{insert_hyperlinks};
+    push @attributes, ( "deleteColumns"    => 0 ) if $arg{delete_columns};
+    push @attributes, ( "deleteRows"       => 0 ) if $arg{delete_rows};
+
+    push @attributes, ( "selectLockedCells" => 1 )
+      if !$arg{select_locked_cells};
+
+    push @attributes, ( "sort"        => 0 ) if $arg{sort};
+    push @attributes, ( "autoFilter"  => 0 ) if $arg{autofilter};
+    push @attributes, ( "pivotTables" => 0 ) if $arg{pivot_tables};
+
+    push @attributes, ( "selectUnlockedCells" => 1 )
+      if !$arg{select_unlocked_cells};
+
+
+    $self->{_writer}->emptyTag( 'sheetProtection', @attributes );
 }
 
 
