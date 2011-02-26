@@ -19,6 +19,7 @@ autofilter.pl           Examples of worksheet autofilters.
 array_formula.pl        Examples of how to write array formulas.
 cgi.pl                  A simple CGI program.
 colors.pl               A demo of the colour palette and named colours.
+date_time.pl            Write dates and times with write_date_time().
 diag_border.pl          A simple example of diagonal cell borders.
 headers.pl              Examples of worksheet headers and footers.
 hide_sheet.pl           Simple example of hiding a worksheet.
@@ -34,7 +35,8 @@ merge6.pl               An example of merging with Unicode strings.
 mod_perl1.pl            A simple mod_perl 1 program.
 mod_perl2.pl            A simple mod_perl 2 program.
 panes.pl                An examples of how to create panes.
-protection.pl           Example of cell locking and formula hiding.right_to_left.pl        Change default sheet direction to right to left.
+protection.pl           Example of cell locking and formula hiding.
+rich_strings.pl         Example of strings with multiple formats.
 right_to_left.pl        Change default sheet direction to right to left.
 sales.pl                An example of a simple sales spreadsheet.
 stats_ext.pl            Same as stats.pl with external references.

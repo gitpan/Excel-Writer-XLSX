@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 
 
 ###############################################################################
@@ -185,11 +185,25 @@ sub _write_sst_strings {
 #
 sub _write_si {
 
-    my $self   = shift;
-    my $string = shift;
+    my $self       = shift;
+    my $string     = shift;
+    my @attributes = ();
+
+    if ( $string =~ /^\s/ || $string =~ /\s$/ ) {
+        push @attributes, ( 'xml:space' => 'preserve' );
+    }
 
     $self->{_writer}->startTag( 'si' );
-    $self->{_writer}->dataElement( 't', $string );
+
+    # Write any rich strings without further tags.
+    if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
+        my $fh = $self->{_writer}->getOutput();
+        print $fh $string;
+    }
+    else {
+        $self->{_writer}->dataElement( 't', $string, @attributes );
+    }
+
     $self->{_writer}->endTag( 'si' );
 }
 

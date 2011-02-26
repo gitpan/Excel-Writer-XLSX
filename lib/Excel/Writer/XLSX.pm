@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.13 of Excel::Writer::XLSX, released February 22, 2011.
+This document refers to version 0.14 of Excel::Writer::XLSX, released February 26, 2011.
 
 
 
@@ -570,8 +570,6 @@ Array slices are explained in the perldata manpage.
 
 =head2 set_1904()
 
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
-
 Excel stores dates as real numbers where the integer part stores the number of days since the epoch and the fractional part stores the percentage of the day. The epoch can be either 1900 or 1904. Excel for Windows uses 1900 and Excel for Macintosh uses 1904. However, Excel on either platform will convert automatically between one system and the other.
 
 Excel::Writer::XLSX stores dates in the 1900 format by default. If you wish to change this you can call the C<set_1904()> workbook method. You can query the current value by calling the C<get_1904()> workbook method. This returns 0 for 1900 and 1 for 1904.
@@ -810,6 +808,90 @@ However, if the user edits this string Excel may convert it back to a number. To
     $worksheet->write_string( 'A2', '01209', $format1 );
 
 See also the note about L<Cell notation>.
+
+
+
+
+=head2 write_rich_string( $row, $column, $format, $string, ..., $cell_format )
+
+The C<write_rich_string()> method is used to write strings with multiple formats. For example to write the string "This is B<bold> and this is I<italic>" you would use the following:
+
+    my $bold   = $workbook->add_format( bold   => 1 );
+    my $italic = $workbook->add_format( italic => 1 );
+
+    $worksheet->write_rich_string( 'A1',
+        'This is ', $bold, 'bold', ' and this is ', $italic, 'italic' );
+
+The basic rule is to break the string into fragments and put a C<$format> object before the fragment that you want to format. For example:
+
+    # Unformatted string.
+      'This is an example string'
+
+    # Break it into fragments.
+      'This is an ', 'example', ' string'
+
+    # Add formatting before the fragments you want formatted.
+      'This is an ', $format, 'example', ' string'
+
+    # In Excel::Writer::XLSX.
+    $worksheet->write_rich_string( 'A1',
+        'This is an ', $format, 'example', ' string' );
+
+String fragments that don't have a format are given a default format. So for example when writing the string "Some B<bold> text" you would use the first example below but it would be equivalent to the second:
+
+    # With default formatting:
+    my $bold    = $workbook->add_format( bold => 1 );
+
+    $worksheet->write_rich_string( 'A1',
+        'Some ', $bold, 'bold', ' text' );
+
+    # Or more explicitly:
+    my $bold    = $workbook->add_format( bold => 1 );
+    my $default = $workbook->add_format();
+
+    $worksheet->write_rich_string( 'A1',
+        $default, 'Some ', $bold, 'bold', $default, ' text' );
+
+As with Excel, only the font properties of the format such as font name, style, size, underline, color and effects are applied to the string fragments. Other features such as border, background and alignment must be applied to the cell.
+
+The C<write_rich_string()> method allows you to do this by using the last argument as a cell format (if it is a format object). The following example centers a rich string in the cell:
+
+    my $bold   = $workbook->add_format( bold  => 1 );
+    my $center = $workbook->add_format( align => 'center' );
+
+    $worksheet->write_rich_string( 'A5',
+        'Some ', $bold, 'bold text', ' centered', $center );
+
+See the C<rich_strings.pl> example in the distro for more examples.
+
+    my $bold   = $workbook->add_format( bold        => 1 );
+    my $italic = $workbook->add_format( italic      => 1 );
+    my $red    = $workbook->add_format( color       => 'red' );
+    my $blue   = $workbook->add_format( color       => 'blue' );
+    my $center = $workbook->add_format( align       => 'center' );
+    my $super  = $workbook->add_format( font_script => 1 );
+
+
+    # Write some strings with multiple formats.
+    $worksheet->write_rich_string( 'A1',
+        'This is ', $bold, 'bold', ' and this is ', $italic, 'italic' );
+
+    $worksheet->write_rich_string( 'A3',
+        'This is ', $red, 'red', ' and this is ', $blue, 'blue' );
+
+    $worksheet->write_rich_string( 'A5',
+        'Some ', $bold, 'bold text', ' centered', $center );
+
+    $worksheet->write_rich_string( 'A7',
+        $italic, 'j = k', $super, '(n-1)', $center );
+
+=begin html
+
+<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/rich_strings.jpg" width="640" height="420" alt="Output from rich_strings.pl" /></center></p>
+
+=end html
+
+As with C<write_sting()> the maximum string size is 32767 characters. See also the note about L<Cell notation>.
 
 
 
@@ -2057,6 +2139,17 @@ e conditions for the filter are specified using simple expressions:
 
 
 
+=head2 convert_date_time( $date_string )
+
+The C<convert_date_time()> method is used internally by the C<write_date_time()> method to convert date strings to a number that represents an Excel date and time.
+
+It is exposed as a public method for utility purposes.
+
+The C<$date_string> format is detailed in the C<write_date_time()> method.
+
+
+
+
 =head1 PAGE SET-UP METHODS
 
 Page set-up methods affect the way that a worksheet looks when it is printed. They control features such as page headers and footers and margins. These methods are really just standard worksheet methods. They are documented here in a separate section for the sake of clarity.
@@ -2873,7 +2966,7 @@ Set the strikeout property of the font.
                         1  = Superscript
                         2  = Subscript
 
-Set the superscript/subscript property of the font. This format is currently not very useful.
+Set the superscript/subscript property of the font.
 
 
 
@@ -3601,6 +3694,8 @@ For a slightly more advanced solution you can modify the C<write()> method to ha
 =head2 Converting dates and times to an Excel date or time
 
 The C<write_date_time()> method above is just one way of handling dates and times.
+
+You can also use the C<convert_date_time()> worksheet method to convert from an ISO8601 style date string to an Excel date and time number.
 
 The L<Excel::Writer::XLSX::Utility> module which is included in the distro has date/time handling functions:
 
@@ -4526,6 +4621,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     array_formula.pl        Examples of how to write array formulas.
     cgi.pl                  A simple CGI program.
     colors.pl               A demo of the colour palette and named colours.
+    date_time.pl            Write dates and times with write_date_time().
     diag_border.pl          A simple example of diagonal cell borders.
     headers.pl              Examples of worksheet headers and footers.
     hide_sheet.pl           Simple example of hiding a worksheet.
@@ -4542,6 +4638,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     mod_perl2.pl            A simple mod_perl 2 program.
     panes.pl                An examples of how to create panes.
     protection.pl           Example of cell locking and formula hiding.
+    rich_strings.pl         Example of strings with multiple formats.
     right_to_left.pl        Change default sheet direction to right to left.
     sales.pl                An example of a simple sales spreadsheet.
     stats_ext.pl            Same as stats.pl with external references.
@@ -4601,7 +4698,7 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
     set_tempdir()               No
     set_custom_color()          Yes
     sheets()                    Yes
-    set_1904()                  No
+    set_1904()                  Yes
     add_chart_ext()             Deprecated
     compatibility_mode()        Deprecated
     set_codepage()              Deprecated
@@ -4609,8 +4706,8 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
 
     Worksheet Methods           Support
     =================           =======
-    write()                     Yes/Partial, not all write_* methods supported yet.
-    write_number()              yes
+    write()                     Yes
+    write_number()              Yes
     write_string()              Yes
     write_blank()               Yes
     write_row()                 Yes
@@ -4718,7 +4815,6 @@ All non-deprecated methods will be supported in time. The missing features will 
 
     set_properties()
     set_tempdir()
-    set_1904()
 
     write_comment()
     data_validation()

@@ -9,6 +9,7 @@ examples/autofilter.pl
 examples/bug_report.pl
 examples/cgi.pl
 examples/colors.pl
+examples/date_time.pl
 examples/demo.pl
 examples/diag_border.pl
 examples/formats.pl
@@ -29,6 +30,7 @@ examples/mod_perl2.pl
 examples/panes.pl
 examples/protection.pl
 examples/regions.pl
+examples/rich_strings.pl
 examples/right_to_left.pl
 examples/sales.pl
 examples/stats.pl
@@ -88,7 +90,8 @@ t/package/core/sub_write_xml_declaration.t
 t/package/relationships/relationships.t
 t/package/relationships/sheet_rels.t
 t/package/relationships/sub_write_xml_declaration.t
-t/package/shared_strings/shared_strings.t
+t/package/shared_strings/shared_strings01.t
+t/package/shared_strings/shared_strings02.t
 t/package/shared_strings/sub_write_si.t
 t/package/shared_strings/sub_write_sst.t
 t/package/shared_strings/sub_write_xml_declaration.t
@@ -129,6 +132,8 @@ t/regression/autofilter04.t
 t/regression/autofilter05.t
 t/regression/autofilter06.t
 t/regression/custom_colors01.t
+t/regression/date_1904_01.t
+t/regression/date_1904_02.t
 t/regression/fit_to_page01.t
 t/regression/fit_to_page02.t
 t/regression/fit_to_page03.t
@@ -176,6 +181,15 @@ t/regression/repeat02.t
 t/regression/repeat03.t
 t/regression/repeat04.t
 t/regression/repeat05.t
+t/regression/rich_string01.t
+t/regression/rich_string02.t
+t/regression/rich_string03.t
+t/regression/rich_string04.t
+t/regression/rich_string05.t
+t/regression/rich_string06.t
+t/regression/rich_string07.t
+t/regression/rich_string08.t
+t/regression/rich_string09.t
 t/regression/simple01.t
 t/regression/simple02.t
 t/regression/tab_color01.t
@@ -187,6 +201,8 @@ t/regression/xlsx_files/autofilter04.xlsx
 t/regression/xlsx_files/autofilter05.xlsx
 t/regression/xlsx_files/autofilter06.xlsx
 t/regression/xlsx_files/custom_colors01.xlsx
+t/regression/xlsx_files/date_1904_01.xlsx
+t/regression/xlsx_files/date_1904_02.xlsx
 t/regression/xlsx_files/fit_to_pages01.xlsx
 t/regression/xlsx_files/fit_to_pages02.xlsx
 t/regression/xlsx_files/fit_to_pages03.xlsx
@@ -234,6 +250,15 @@ t/regression/xlsx_files/repeat02.xlsx
 t/regression/xlsx_files/repeat03.xlsx
 t/regression/xlsx_files/repeat04.xlsx
 t/regression/xlsx_files/repeat05.xlsx
+t/regression/xlsx_files/rich_string01.xlsx
+t/regression/xlsx_files/rich_string02.xlsx
+t/regression/xlsx_files/rich_string03.xlsx
+t/regression/xlsx_files/rich_string04.xlsx
+t/regression/xlsx_files/rich_string05.xlsx
+t/regression/xlsx_files/rich_string06.xlsx
+t/regression/xlsx_files/rich_string07.xlsx
+t/regression/xlsx_files/rich_string08.xlsx
+t/regression/xlsx_files/rich_string09.xlsx
 t/regression/xlsx_files/simple01.xlsx
 t/regression/xlsx_files/simple02.xlsx
 t/regression/xlsx_files/tab_color01.xlsx
@@ -258,6 +283,9 @@ t/workbook/workbook_01.t
 t/workbook/workbook_02.t
 t/workbook/workbook_03.t
 t/worksheet/sub_calculate_spans.t
+t/worksheet/sub_convert_date_time_01.t
+t/worksheet/sub_convert_date_time_02.t
+t/worksheet/sub_convert_date_time_03.t
 t/worksheet/sub_extract_filter_tokens.t
 t/worksheet/sub_parse_filter_expression.t
 t/worksheet/sub_write_auto_filter.t
