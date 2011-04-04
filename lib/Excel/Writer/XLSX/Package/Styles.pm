@@ -6,7 +6,7 @@ package Excel::Writer::XLSX::Package::Styles;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2010, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 
 ###############################################################################
@@ -899,12 +899,18 @@ sub _write_colors {
 #
 # _write_mru_colors()
 #
-# Write the <mruColors> element.
+# Write the <mruColors> element for the most recently used colours.
 #
 sub _write_mru_colors {
 
     my $self          = shift;
     my @custom_colors = @_;
+
+    # Limit the mruColors to the last 10.
+    my $count = @custom_colors;
+    if ( $count > 10 ) {
+        splice @custom_colors, 0, ( $count - 10 );
+    }
 
     $self->{_writer}->startTag( 'mruColors' );
 

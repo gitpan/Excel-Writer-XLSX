@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Package::ContentTypes;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2010, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -21,7 +21,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 
 ###############################################################################
@@ -135,19 +135,73 @@ sub _add_override {
 
 ###############################################################################
 #
-# _add_sheet_name()
+# _add_worksheet_name()
 #
 # Add the name of a worksheet to the ContentTypes overrides.
 #
-sub _add_sheet_name {
+sub _add_worksheet_name {
 
     my $self       = shift;
-    my $sheet_name = shift;
+    my $worksheet_name = shift;
 
-    $sheet_name = "/xl/worksheets/$sheet_name.xml";
+    $worksheet_name = "/xl/worksheets/$worksheet_name.xml";
 
-    $self->_add_override( $sheet_name,
+    $self->_add_override( $worksheet_name,
         $app_document . 'spreadsheetml.worksheet+xml' );
+}
+
+
+###############################################################################
+#
+# _add_chartsheet_name()
+#
+# Add the name of a chartsheet to the ContentTypes overrides.
+#
+sub _add_chartsheet_name {
+
+    my $self       = shift;
+    my $chartsheet_name = shift;
+
+    $chartsheet_name = "/xl/chartsheets/$chartsheet_name.xml";
+
+    $self->_add_override( $chartsheet_name,
+        $app_document . 'spreadsheetml.chartsheet+xml' );
+}
+
+
+###############################################################################
+#
+# _add_chart_name()
+#
+# Add the name of a chart to the ContentTypes overrides.
+#
+sub _add_chart_name {
+
+    my $self       = shift;
+    my $chart_name = shift;
+
+    $chart_name = "/xl/charts/$chart_name.xml";
+
+    $self->_add_override( $chart_name,
+        $app_document . 'drawingml.chart+xml' );
+}
+
+
+###############################################################################
+#
+# _add_drawing_name()
+#
+# Add the name of a drawing to the ContentTypes overrides.
+#
+sub _add_drawing_name {
+
+    my $self       = shift;
+    my $drawing_name = shift;
+
+    $drawing_name = "/xl/drawings/$drawing_name.xml";
+
+    $self->_add_override( $drawing_name,
+        $app_document . 'drawing+xml' );
 }
 
 

@@ -6,7 +6,7 @@ package Excel::Writer::XLSX::Package::App;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2010, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 
 ###############################################################################
@@ -103,12 +103,15 @@ sub _add_part_name {
 #
 # _add_heading_pair()
 #
-# Add the name of a workbook Heading Pair such as 'Worksheets' or 'Named Ranges'.
+# Add the name of a workbook Heading Pair such as 'Worksheets', 'Charts' or
+# 'Named Ranges'.
 #
 sub _add_heading_pair {
 
     my $self         = shift;
     my $heading_pair = shift;
+
+    return unless $heading_pair->[1];  # Ignore empty pairs such as chartsheets.
 
     my @vector = (
         [ 'lpstr', $heading_pair->[0] ],    # Data name

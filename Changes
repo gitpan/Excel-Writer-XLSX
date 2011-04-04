@@ -4,11 +4,18 @@ Revision history for Perl module Excel::Writer::XLSX.
 - Removed/deprecated feature.
 ! Bug fix.
 
+0.17 April 4 2011
+
+    + Added charting feature. See Chart.pm.
+
+    ! Fix for file corruption issue when there are more than 10 custom colours.
+      Reported by Brian R. Landy.
+
 
 0.16 March 4 2011
 
-    ! Claried support for deprecated methods in documentation and added backward
-      compatible methods in some cases.
+    ! Clarified support for deprecated methods in documentation and added
+      backward compatible methods in some cases.
 
     ! Fix for center_horizontally() issue.
       Reported by Giulio Orsero.
