@@ -2,7 +2,7 @@ package Excel::Writer::XLSX::Worksheet;
 
 ###############################################################################
 #
-# Worksheet - A writer class for Excel Worksheets.
+# Worksheet - A class for writing Excel Worksheets.
 #
 #
 # Used in conjunction with Excel::Writer::XLSX
@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 
 
 ###############################################################################
@@ -5515,7 +5515,7 @@ __END__
 
 =head1 NAME
 
-Worksheet - A writer class for Excel Worksheets.
+Worksheet - A class for writing Excel Worksheets.
 
 =head1 SYNOPSIS
 
