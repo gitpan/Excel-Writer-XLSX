@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 
 ###############################################################################
@@ -173,7 +173,27 @@ sub add_series {
     my $val_id  = $self->_get_data_id( $values,       $arg{values_data} );
     my $name_id = $self->_get_data_id( $name_formula, $arg{name_data} );
 
-    # Add the parsed data to the user supplied data. TODO. Refactor.
+    # Set the line properties for the series.
+    my $line = $self->_get_line_properties( $arg{line} );
+
+    # Allow 'border' as a synonym for 'line' in bar/column style charts.
+    if ( $arg{border} ) {
+        $line = $self->_get_line_properties( $arg{border} );
+    }
+
+    # Set the fill properties for the series.
+    my $fill = $self->_get_fill_properties( $arg{fill} );
+
+    # Set the marker properties for the series.
+    my $marker = $self->_get_marker_properties( $arg{marker} );
+
+    # Set the trendline properties for the series.
+    my $trendline = $self->_get_trendline_properties( $arg{trendline} );
+
+    # Set the labels properties for the series.
+    my $labels = $self->_get_labels_properties( $arg{data_labels} );
+
+    # Add the user supplied data to the internal structures.
     %arg = (
         _values       => $values,
         _categories   => $categories,
@@ -182,6 +202,11 @@ sub add_series {
         _name_id      => $name_id,
         _val_data_id  => $val_id,
         _cat_data_id  => $cat_id,
+        _line         => $line,
+        _fill         => $fill,
+        _marker       => $marker,
+        _trendline    => $trendline,
+        _labels       => $labels,
     );
 
     push @{ $self->{_series} }, \%arg;
@@ -278,6 +303,7 @@ sub set_legend {
 sub set_plotarea {
 
     # TODO. Need to refactor for XLSX format.
+    return;
 
     my $self = shift;
     my %arg  = @_;
@@ -337,6 +363,7 @@ sub set_plotarea {
 sub set_chartarea {
 
     # TODO. Need to refactor for XLSX format.
+    return;
 
     my $self = shift;
     my %arg  = @_;
@@ -543,86 +570,55 @@ sub _get_data_id {
 
 ###############################################################################
 #
-# _get_color_indices()
+# _get_color()
 #
-# Convert the user specified colour index or string to an colour index and
-# RGB colour number.
+# Convert the user specified colour index or string to a rgb colour.
 #
-sub _get_color_indices {
+sub _get_color {
 
     my $self  = shift;
     my $color = shift;
-    my $index;
-    my $rgb;
 
-    return ( undef, undef ) if !defined $color;
-
-    my %colors = (
-        aqua    => 0x0F,
-        cyan    => 0x0F,
-        black   => 0x08,
-        blue    => 0x0C,
-        brown   => 0x10,
-        magenta => 0x0E,
-        fuchsia => 0x0E,
-        gray    => 0x17,
-        grey    => 0x17,
-        green   => 0x11,
-        lime    => 0x0B,
-        navy    => 0x12,
-        orange  => 0x35,
-        pink    => 0x21,
-        purple  => 0x14,
-        red     => 0x0A,
-        silver  => 0x16,
-        white   => 0x09,
-        yellow  => 0x0D,
-    );
-
-
-    # Check for the various supported colour index/name possibilities.
-    if ( exists $colors{$color} ) {
-
-        # Colour matches one of the supported colour names.
-        $index = $colors{$color};
-    }
-    elsif ( $color =~ m/\D/ ) {
-
-        # Return undef if $color is a string but not one of the supported ones.
-        return ( undef, undef );
-    }
-    elsif ( $color < 8 || $color > 63 ) {
-
-        # Return undef if index is out of range.
-        return ( undef, undef );
-    }
-    else {
-
-        # We should have a valid color index in a valid range.
-        $index = $color;
+    # Convert a HTML style #RRGGBB color.
+    if ( defined $color and $color =~ /^#[0-9a-fA-F]{6}$/ ) {
+        $color =~ s/^#//;
+        return uc $color;
     }
 
-    $rgb = $self->_get_color_rbg( $index );
-    return ( $index, $rgb );
+    my $index = &Excel::Writer::XLSX::Format::_get_color( $color );
+
+    # Set undefined colors to black.
+    if ( !$index ) {
+        $index = 0x08;
+        warn "Unknown color '$color' used in chart formatting. "
+          . "Converting to black.\n";
+    }
+
+    return $self->_get_palette_color( $index );
 }
 
 
 ###############################################################################
 #
-# _get_color_rbg()
+# _get_palette_color()
 #
-# Get the RedGreenBlue number for the colour index from the Workbook palette.
+# Convert from an Excel internal colour index to a XML style #RRGGBB index
+# based on the default or user defined values in the Workbook palette.
+# Note: This version doesn't add an alpha channel.
 #
-sub _get_color_rbg {
+sub _get_palette_color {
 
-    my $self  = shift;
-    my $index = shift;
+    my $self    = shift;
+    my $index   = shift;
+    my $palette = $self->{_palette};
 
-    # Adjust colour index from 8-63 (user range) to 0-55 (Excel range).
+    # Adjust the colour index.
     $index -= 8;
 
-    my @red_green_blue = @{ $self->{_palette}->[$index] };
-    return unpack 'V', pack 'C*', @red_green_blue;
+    # Palette is passed in from the Workbook class.
+    my @rgb = @{ $palette->[$index] };
+
+    return sprintf "%02X%02X%02X", @rgb;
 }
 
 
@@ -705,6 +701,206 @@ sub _get_line_weight {
     }
 
     return $weight;
+}
+
+
+###############################################################################
+#
+# _get_line_properties()
+#
+# Convert user defined line properties to the structure required internally.
+#
+sub _get_line_properties {
+
+    my $self = shift;
+    my $line = shift;
+
+    return { _defined => 0 } unless $line;
+
+    my %dash_types = (
+        solid               => 'solid',
+        round_dot           => 'sysDot',
+        square_dot          => 'sysDash',
+        dash                => 'dash',
+        dash_dot            => 'dashDot',
+        long_dash           => 'lgDash',
+        long_dash_dot       => 'lgDashDot',
+        long_dash_dot_dot   => 'lgDashDotDot',
+        dot                 => 'dot',
+        system_dash_dot     => 'sysDashDot',
+        system_dash_dot_dot => 'sysDashDotDot',
+    );
+
+    # Check the dash type.
+    my $dash_type = $line->{dash_type};
+
+    if ( defined $dash_type ) {
+        if ( exists $dash_types{$dash_type} ) {
+            $line->{dash_type} = $dash_types{$dash_type};
+        }
+        else {
+            warn "Unknown dash type '$dash_type'\n";
+            return;
+        }
+    }
+
+    $line->{_defined} = 1;
+
+    return $line;
+}
+
+
+###############################################################################
+#
+# _get_fill_properties()
+#
+# Convert user defined fill properties to the structure required internally.
+#
+sub _get_fill_properties {
+
+    my $self = shift;
+    my $fill = shift;
+
+    return { _defined => 0 } unless $fill;
+
+    $fill->{_defined} = 1;
+
+    return $fill;
+}
+
+
+###############################################################################
+#
+# _get_marker_properties()
+#
+# Convert user defined marker properties to the structure required internally.
+#
+sub _get_marker_properties {
+
+    my $self   = shift;
+    my $marker = shift;
+
+    return unless $marker;
+
+    my %types = (
+        automatic  => 'automatic',
+        none       => 'none',
+        square     => 'square',
+        diamond    => 'diamond',
+        triangle   => 'triangle',
+        x          => 'x',
+        star       => 'start',
+        dot        => 'dot',
+        short_dash => 'dot',
+        dash       => 'dash',
+        long_dash  => 'dash',
+        circle     => 'circle',
+        plus       => 'plus',
+        picture    => 'picture',
+    );
+
+    # Check for valid types.
+    my $marker_type = $marker->{type};
+
+    if ( defined $marker_type ) {
+        if ( $marker_type eq 'automatic' ) {
+            $marker->{automatic} = 1;
+        }
+
+        if ( exists $types{$marker_type} ) {
+            $marker->{type} = $types{$marker_type};
+        }
+        else {
+            warn "Unknown marker type '$marker_type'\n";
+            return;
+        }
+    }
+
+    # Set the line properties for the marker..
+    my $line = $self->_get_line_properties( $marker->{line} );
+
+    # Allow 'border' as a synonym for 'line'.
+    if ( $marker->{border} ) {
+        $line = $self->_get_line_properties( $marker->{border} );
+    }
+
+    # Set the fill properties for the marker.
+    my $fill = $self->_get_fill_properties( $marker->{fill} );
+
+
+    $marker->{_line} = $line;
+    $marker->{_fill} = $fill;
+
+    return $marker;
+}
+
+
+###############################################################################
+#
+# _get_trendline_properties()
+#
+# Convert user defined trendline properties to the structure required internally.
+#
+sub _get_trendline_properties {
+
+    my $self      = shift;
+    my $trendline = shift;
+
+    return unless $trendline;
+
+    my %types = (
+        exponential    => 'exp',
+        linear         => 'linear',
+        log            => 'log',
+        moving_average => 'movingAvg',
+        polynomial     => 'poly',
+        power          => 'power',
+    );
+
+    # Check the trendline type.
+    my $trend_type = $trendline->{type};
+
+    if ( exists $types{$trend_type} ) {
+        $trendline->{type} = $types{$trend_type};
+    }
+    else {
+        warn "Unknown trendline type '$trend_type'\n";
+        return;
+    }
+
+    # Set the line properties for the trendline..
+    my $line = $self->_get_line_properties( $trendline->{line} );
+
+    # Allow 'border' as a synonym for 'line'.
+    if ( $trendline->{border} ) {
+        $line = $self->_get_line_properties( $trendline->{border} );
+    }
+
+    # Set the fill properties for the trendline.
+    my $fill = $self->_get_fill_properties( $trendline->{fill} );
+
+
+    $trendline->{_line} = $line;
+    $trendline->{_fill} = $fill;
+
+    return $trendline;
+}
+
+
+###############################################################################
+#
+# _get_labels_properties()
+#
+# Convert user defined labels properties to the structure required internally.
+#
+sub _get_labels_properties {
+
+    my $self = shift;
+    my $labels = shift;
+
+    return undef unless $labels;
+
+    return $labels;
 }
 
 
@@ -1035,8 +1231,17 @@ sub _write_ser {
     # Write the series name.
     $self->_write_series_name( $series );
 
+    # Write the c:spPr element.
+    $self->_write_sp_pr( $series );
+
     # Write the c:marker element.
-    $self->_write_marker();
+    $self->_write_marker( $series->{_marker} );
+
+    # Write the c:dLbls element.
+    $self->_write_d_lbls( $series->{_labels} );
+
+    # Write the c:trendline element.
+    $self->_write_trendline( $series->{_trendline} );
 
     # Write the c:cat element.
     $self->_write_cat( $series );
@@ -2302,18 +2507,23 @@ sub _write_tx_pr {
 #
 sub _write_marker {
 
-    my $self  = shift;
-    my $style = shift // $self->{_default_marker};
+    my $self = shift;
+    my $marker = shift // $self->{_default_marker};
 
-    return unless $style;
+    return unless $marker;
+    return if $marker->{automatic};
 
     $self->{_writer}->startTag( 'c:marker' );
 
     # Write the c:symbol element.
-    $self->_write_symbol( $style );
+    $self->_write_symbol( $marker->{type} );
 
     # Write the c:size element.
-    $self->_write_marker_size( 3 ) if $style eq 'dot';
+    my $size = $marker->{size};
+    $self->_write_marker_size( $size ) if $size;
+
+    # Write the c:spPr element.
+    $self->_write_sp_pr( $marker );
 
     $self->{_writer}->endTag( 'c:marker' );
 }
@@ -2380,12 +2590,24 @@ sub _write_symbol {
 #
 sub _write_sp_pr {
 
-    my $self = shift;
+    my $self   = shift;
+    my $series = shift;
+
+    if ( !$series->{_line}->{_defined} and !$series->{_fill}->{_defined} ) {
+        return;
+    }
 
     $self->{_writer}->startTag( 'c:spPr' );
 
+    # Write the a:solidFill element for solid charts such as pie and bar.
+    if ( $series->{_fill}->{_defined} ) {
+        $self->_write_a_solid_fill( $series->{_fill} );
+    }
+
     # Write the a:ln element.
-    $self->_write_a_ln();
+    if ( $series->{_line}->{_defined} ) {
+        $self->_write_a_ln( $series->{_line} );
+    }
 
     $self->{_writer}->endTag( 'c:spPr' );
 }
@@ -2399,15 +2621,41 @@ sub _write_sp_pr {
 #
 sub _write_a_ln {
 
-    my $self = shift;
-    my $w    = 28575;
+    my $self       = shift;
+    my $line       = shift;
+    my @attributes = ();
 
-    my @attributes = ( 'w' => $w );
+    # Add the line width as an attribute.
+    if ( my $width = $line->{width} ) {
+
+        # Round width to nearest 0.25, like Excel.
+        $width = int( ( $width + 0.125 ) * 4 ) / 4;
+
+        # Convert to internal units.
+        $width = int( 0.5 + ( 12700 * $width ) );
+
+        @attributes = ( 'w' => $width );
+    }
 
     $self->{_writer}->startTag( 'a:ln', @attributes );
 
-    # Write the a:noFill element.
-    $self->_write_a_no_fill();
+    # Write the line fill.
+    if ( $line->{none} ) {
+
+        # Write the a:noFill element.
+        $self->_write_a_no_fill();
+    }
+    else {
+        # Write the a:solidFill element.
+        $self->_write_a_solid_fill( $line );
+    }
+
+    # Write the line/dash type.
+    if ( my $type = $line->{dash_type} ) {
+
+        # Write the a:prstDash element.
+        $self->_write_a_prst_dash( $type );
+    }
 
     $self->{_writer}->endTag( 'a:ln' );
 }
@@ -2425,6 +2673,216 @@ sub _write_a_no_fill {
 
     $self->{_writer}->emptyTag( 'a:noFill' );
 }
+
+
+##############################################################################
+#
+# _write_a_solid_fill()
+#
+# Write the <a:solidFill> element.
+#
+sub _write_a_solid_fill {
+
+    my $self = shift;
+    my $line = shift;
+
+    $self->{_writer}->startTag( 'a:solidFill' );
+
+    if ( $line->{color} ) {
+
+        my $color = $self->_get_color( $line->{color} );
+
+        # Write the a:srgbClr element.
+        $self->_write_a_srgb_clr( $color );
+    }
+
+
+    $self->{_writer}->endTag( 'a:solidFill' );
+}
+
+
+##############################################################################
+#
+# _write_a_srgb_clr()
+#
+# Write the <a:srgbClr> element.
+#
+sub _write_a_srgb_clr {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'a:srgbClr', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_a_prst_dash()
+#
+# Write the <a:prstDash> element.
+#
+sub _write_a_prst_dash {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'a:prstDash', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_trendline()
+#
+# Write the <c:trendline> element.
+#
+sub _write_trendline {
+
+    my $self      = shift;
+    my $trendline = shift;
+
+    return unless $trendline;
+
+    $self->{_writer}->startTag( 'c:trendline' );
+
+    # Write the c:name element.
+    $self->_write_name( $trendline->{name} );
+
+    # Write the c:spPr element.
+    $self->_write_sp_pr( $trendline );
+
+    # Write the c:trendlineType element.
+    $self->_write_trendline_type( $trendline->{type} );
+
+    # Write the c:order element for polynomial trendlines.
+    if ( $trendline->{type} eq 'poly' ) {
+        $self->_write_trendline_order( $trendline->{order} );
+    }
+
+    # Write the c:period element for moving average trendlines.
+    if ( $trendline->{type} eq 'movingAvg' ) {
+        $self->_write_period( $trendline->{period} );
+    }
+
+    # Write the c:forward element.
+    $self->_write_forward( $trendline->{forward} );
+
+    # Write the c:backward element.
+    $self->_write_backward( $trendline->{backward} );
+
+    $self->{_writer}->endTag( 'c:trendline' );
+}
+
+
+##############################################################################
+#
+# _write_trendline_type()
+#
+# Write the <c:trendlineType> element.
+#
+sub _write_trendline_type {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:trendlineType', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_name()
+#
+# Write the <c:name> element.
+#
+sub _write_name {
+
+    my $self = shift;
+    my $data = shift;
+
+    return unless defined $data;
+
+    $self->{_writer}->dataElement( 'c:name', $data );
+}
+
+
+##############################################################################
+#
+# _write_trendline_order()
+#
+# Write the <c:order> element.
+#
+sub _write_trendline_order {
+
+    my $self = shift;
+    my $val  = shift // 2;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:order', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_period()
+#
+# Write the <c:period> element.
+#
+sub _write_period {
+
+    my $self = shift;
+    my $val  = shift // 2;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:period', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_forward()
+#
+# Write the <c:forward> element.
+#
+sub _write_forward {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:forward', @attributes );
+}
+
+##############################################################################
+#
+# _write_backward()
+#
+# Write the <c:backward> element.
+#
+sub _write_backward {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:backward', @attributes );
+}
+
 
 
 ##############################################################################
@@ -2601,6 +3059,86 @@ sub _write_protection {
 }
 
 
+##############################################################################
+#
+# _write_d_lbls()
+#
+# Write the <c:dLbls> element.
+#
+sub _write_d_lbls {
+
+    my $self   = shift;
+    my $labels = shift;
+
+    return unless $labels;
+
+    $self->{_writer}->startTag( 'c:dLbls' );
+
+    # Write the c:showVal element.
+    $self->_write_show_val() if $labels->{value};
+
+    # Write the c:showCatName element.
+    $self->_write_show_cat_name() if $labels->{category};
+
+    # Write the c:showSerName element.
+    $self->_write_show_ser_name() if $labels->{series_name};
+
+    $self->{_writer}->endTag( 'c:dLbls' );
+}
+
+
+
+##############################################################################
+#
+# _write_show_val()
+#
+# Write the <c:showVal> element.
+#
+sub _write_show_val {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:showVal', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_show_cat_name()
+#
+# Write the <c:showCatName> element.
+#
+sub _write_show_cat_name {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:showCatName', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_show_ser_name()
+#
+# Write the <c:showSerName> element.
+#
+sub _write_show_ser_name {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:showSerName', @attributes );
+}
+
+
 1;
 
 __END__
@@ -2648,7 +3186,7 @@ To create a simple Excel file with a chart using Excel::Writer::XLSX:
 
 The C<Chart> module is an abstract base class for modules that implement charts in L<Excel::Writer::XLSX>. The information below is applicable to all of the available subclasses.
 
-The C<Chart> module isn't used directly, a chart object is created via the Workbook C<add_chart()> method where the chart type is specified:
+The C<Chart> module isn't used directly. A chart object is created via the Workbook C<add_chart()> method where the chart type is specified:
 
     my $chart = $workbook->add_chart( type => 'column' );
 
@@ -2693,18 +3231,18 @@ More charts and sub-types will be supported in time. See the L</TODO> section.
 
 =head1 CHART METHODS
 
-Methods that are common to all chart types are documented below. See the documentation for each sub class for chart specific information.
+Methods that are common to all chart types are documented below. See the documentation for each of the above chart modules for chart specific information.
 
 =head2 add_series()
 
-In an Excel chart a "series" is a collection of information such as values, x-axis labels and the name that define which data is plotted.
+In an Excel chart a "series" is a collection of information such as values, x-axis labels and the formatting that define which data is plotted.
 
 With a Excel::Writer::XLSX chart object the C<add_series()> method is used to set the properties for a series:
 
     $chart->add_series(
-        categories => '=Sheet1!$A$2:$A$10', # Optional, depending on chart type.
-        values     => '=Sheet1!$B$2:$B$10', # Required for all chart types.
-        name       => 'Series name',        # Optional.
+        categories => '=Sheet1!$A$2:$A$10', # Optional.
+        values     => '=Sheet1!$B$2:$B$10', # Required.
+        line       => { color => 'blue' },
     );
 
 The properties that can be set are:
@@ -2721,7 +3259,31 @@ This sets the chart category labels. The category is more or less the same as th
 
 =item * C<name>
 
-Set the name for the series. The name is displayed in the chart legend and in the formula bar. The name property is optional and if it isn't supplied will default to C<Series 1 .. n>.
+Set the name for the series. The name is displayed in the chart legend and in the formula bar. The name property is optional and if it isn't supplied it will default to C<Series 1 .. n>.
+
+=item * C<line>
+
+Set the properties of the series line type such as colour and width. See the L</CHART FORMATTING> section below.
+
+=item * C<border>
+
+Set the border properties of the series such as colour and style. See the L</CHART FORMATTING> section below.
+
+=item * C<fill>
+
+Set the fill properties of the series such as colour. See the L</CHART FORMATTING> section below.
+
+=item * C<marker>
+
+Set the properties of the series marker such as style and color. See the L</CHART FORMATTING> section below.
+
+=item * C<trendline>
+
+Set the properties of the series trendline such as linear, polynomial and moving average types. See the L</CHART FORMATTING> section below.
+
+=item * C<data_labels>
+
+Set data labels for the series. See the L</CHART FORMATTING> section below.
 
 =back
 
@@ -2734,7 +3296,7 @@ The following are equivalent:
     $chart->add_series( categories => '=Sheet1!$A$2:$A$7'      ); # Same as ...
     $chart->add_series( categories => [ 'Sheet1', 1, 6, 0, 0 ] ); # Zero-indexed.
 
-You can add more than one series to a chart, in fact some chart types such as C<stock> require it. The series numbering and order in the final chart is the same as the order in which that are added.
+You can add more than one series to a chart. In fact, some chart types such as C<stock> require it. The series numbering and order in the Excel chart will be the same as the order in which that are added in Excel::Writer::XLSX.
 
     # Add the first series.
     $chart->add_series(
@@ -2743,7 +3305,7 @@ You can add more than one series to a chart, in fact some chart types such as C<
         name       => 'Test data series 1',
     );
 
-    # Add another series. Category is the same but values are different.
+    # Add another series. Same categories. Different range values.
     $chart->add_series(
         categories => '=Sheet1!$A$2:$A$7',
         values     => '=Sheet1!$C$2:$C$7',
@@ -2824,13 +3386,13 @@ Set the position of the chart legend.
 
 The default legend position is C<right>. The available positions are:
 
-    right
-    left
+    none
     top
     bottom
-    none
-    overlay_right
+    left
+    right
     overlay_left
+    overlay_right
 
 =back
 
@@ -2855,6 +3417,341 @@ The C<set_style()> method is used to set the style of the chart to one of the 42
 
 The default style is 2.
 
+=head1 CHART FORMATTING
+
+The following chart formatting properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart lines, column fill areas, plot area borders, markers and other chart elements documented above.
+
+    line
+    border
+    fill
+    marker
+    trendline
+    data_labels
+
+Chart formatting properties are generally set using hash refs.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { color => 'blue' },
+    );
+
+In some cases the format properties can be nested. For example a C<marker> may contain C<border> and C<fill> sub-properties.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { color => 'blue' },
+        marker     => {
+            type    => 'square',
+            size    => 5,
+            border  => { color => 'red' },
+            fill    => { color => 'yellow' },
+        },
+    );
+
+=head2 Line
+
+The line format is used to specify properties of line objects that appear in a chart such as a plotted line on a chart or a border.
+
+The following properties can be set for C<line> formats in a chart.
+
+    none
+    color
+    width
+    dash_type
+
+
+The C<none> property is uses to turn the C<line> off (it is always on by default except in Scatter charts). This is useful if you wish to plot a series with markers but without a line.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { none => 1 },
+    );
+
+
+The C<color> property sets the color of the C<line>.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { color => 'red' },
+    );
+
+The available colors are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the color of a line with a HTML style RGB color:
+
+    $chart->add_series(
+        line       => { color => '#FF0000' },
+    );
+
+
+The C<width> property sets the width of the C<line>. It should be specified in increments of 0.25 of a point as in Excel.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { width => 3.25 },
+    );
+
+The C<dash_type> property sets the dash style of the line.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => { dash_type => 'dash_dot' },
+    );
+
+The following C<dash_type> values are available. They are shown in the order that they appear in the Excel dialog.
+
+    solid
+    round_dot
+    square_dot
+    dash
+    dash_dot
+    long_dash
+    long_dash_dot
+    long_dash_dot_dot
+
+The default line style is C<solid>.
+
+More than one C<line> property can be specified at time:
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        line       => {
+            color     => 'red',
+            width     => 1.25,
+            dash_type => 'square_dot',
+        },
+    );
+
+=head2 Border
+
+The C<border> property is a synonym for C<line>.
+
+It can be used as a descriptive substitute for C<line> in chart types such as Bar and Column that have a border and fill style rather than a line style. In general chart objects with a C<border> property will also have a fill property.
+
+
+=head2 Fill
+
+The fill format is used to specify filled areas of chart objects such as the interior of a column or the background of the chart itself.
+
+The following properties can be set for C<fill> formats in a chart.
+
+    none
+    color
+
+The C<none> property is uses to turn the C<fill> property off (it is generally on by default).
+
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        fill       => { none => 1 },
+    );
+
+The C<color> property sets the color of the C<fill> area.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        fill       => { color => 'red' },
+    );
+
+The available colors are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the color of a fill with a HTML style RGB color:
+
+    $chart->add_series(
+        fill       => { color => '#FF0000' },
+    );
+
+The C<fill> format is generally used in conjunction with a C<border> format which has the same properties as a C<line> format.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        border     => { color => 'red' },
+        fill       => { color => 'yellow' },
+    );
+
+=head2 Marker
+
+The marker format specifies the properties of the markers used to distinguish series on a chart. In general only Line and Scatter chart types and trendlines use markers.
+
+The following properties can be set for C<marker> formats in a chart.
+
+    type
+    size
+    border
+    fill
+
+The C<type> property sets the type of marker that is used with a series.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'diamond' },
+    );
+
+The following C<type> properties can be set for C<marker> formats in a chart. These are shown in the same order as in the Excel format dialog.
+
+    automatic
+    none
+    square
+    diamond
+    triangle
+    x
+    star
+    short_dash
+    long_dash
+    circle
+    plus
+
+The C<automatic> type is a special case which turns on a marker using the default marker style for the particular series number.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'automatic' },
+    );
+
+If C<automatic> is on then other marker properties such as size, border or fill cannot be set.
+
+The C<size> property sets the size of the marker and is generally used in conjunction with C<type>.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'diamond', size => 7 },
+    );
+
+Nested C<border> and C<fill> properties can also be set for a marker. These have the same sub-properties as shown above.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => {
+            type    => 'square',
+            size    => 5,
+            border  => { color => 'red' },
+            fill    => { color => 'yellow' },
+        },
+    );
+
+=head2 Trendline
+
+A trendline can be added to a chart series to indicate trends in the data such as a moving average or a polynomial fit.
+
+The following properties can be set for C<trendline> formats in a chart.
+
+    type
+    order       (for polynomial trends)
+    period      (for moving average)
+    forward     (for all except moving average)
+    backward    (for all except moving average)
+    name
+    line
+
+The C<type> property sets the type of trendline in the series.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => { type => 'linear' },
+    );
+
+The available C<trendline> types are:
+
+    exponential
+    linear
+    log
+    moving_average
+    polynomial
+    power
+
+A C<polynomial> trendline can also specify the C<order> of the polynomial. The default value is 2.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type  => 'polynomial',
+            order => 3,
+        },
+    );
+
+A C<moving_average> trendline can also the C<period> of the moving average. The default value is 2.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => {
+            type   => 'moving_average',
+            period => 3,
+        },
+    );
+
+The C<forward> and C<backward> properties set the forecast period of the trendline.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type     => 'linear',
+            forward  => 0.5,
+            backward => 0.5,
+        },
+    );
+
+The C<name> property sets an optional name for the trendline that will appear in the chart legend. If it isn't specified the Excel default name will be displayed. This is usually a combination of the trendline type and the series name.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type => 'linear',
+            name => 'Interpolated trend',
+        },
+    );
+
+Several of these properties can be set in one go:
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => {
+            type     => 'linear',
+            name     => 'My trend name',
+            forward  => 0.5,
+            backward => 0.5,
+            line     => {
+                color     => 'red',
+                width     => 1,
+                dash_type => 'long_dash',
+            },
+        },
+    );
+
+Trendlines cannot be added to series in a stacked chart or pie chart or (when implemented) to 3-D, radar, surface, or doughnut charts.
+
+=head2 Data Labels
+
+Data labels can be added to a chart series to indicate the values of the plotted data points.
+
+The following properties can be set for C<data_labels> formats in a chart.
+
+    value
+    category
+    series_name
+
+
+The C<value> property turns on the I<Value> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1 },
+    );
+
+The C<category> property turns on the I<Category Name> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { category => 1 },
+    );
+
+
+The C<series_name> property turns on the I<Series Name> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { series_name => 1 },
+    );
+
+
+=head2 Other formatting options
+
+Other formatting options will be added in time. If there is a feature that you would like to see included drop me a line.
 
 =head1 WORKSHEET METHODS
 
@@ -2950,7 +3847,7 @@ Here is a complete example that demonstrates some of the available features when
 
 =head1 TODO
 
-Charts in Excel::Writer::XLSX is under active development. More chart types and features will be added in time.
+The chart feature in Excel::Writer::XLSX is under active development. More chart types and features will be added in time.
 
 Features that are on the TODO list and will be added are:
 
@@ -2958,7 +3855,7 @@ Features that are on the TODO list and will be added are:
 
 =item * Chart sub-types such as stacked and percent stacked.
 
-=item * Colours and formatting options. For now try the C<set_style()> method.
+=item * Additional formatting options. For now try the C<set_style()> method.
 
 =item * Axis controls, range limits, gridlines.
 

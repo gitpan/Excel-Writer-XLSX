@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 
 ###############################################################################
@@ -163,6 +163,7 @@ sub new {
     $self->{_external_dlinks} = [];
     $self->{_drawing_links}   = [];
     $self->{_charts}          = [];
+    $self->{_images}          = [];
     $self->{_drawing}         = 0;
 
     $self->{_rstring} = '';
@@ -2264,7 +2265,7 @@ sub write_array_formula {
     my $value   = $_[6];           # Optional formula value.
     my $type    = 'a';             # The data type
 
-    $xf = _XF( $self, $row1, $col1, $xf );    # The cell format
+    $xf = _XF( $self, $xf );       # The cell format
 
 
     # Swap last row/col with first row/col as necessary
@@ -2620,23 +2621,6 @@ sub convert_date_time {
     $days++ if $date_1904 == 0 and $days > 59;
 
     return $days + $seconds;
-}
-
-
-###############################################################################
-#
-# insert_bitmap($row, $col, $filename, $x, $y, $scale_x, $scale_y)
-#
-# Insert a 24bit bitmap image in a worksheet. The main record required is
-# IMDATA but it must be proceeded by a OBJ record to define its position.
-#
-sub insert_bitmap {
-
-    my $self = shift;
-
-
-    # TODO Update for SpreadsheetML format
-
 }
 
 
@@ -3102,8 +3086,13 @@ sub _store_externsheet {
 #
 #     $col_start, $row_start, $col_end, $row_end, $x1, $y1, $x2, $y2.
 #
-# The width and height of the cells are also variable and have to be taken into
-# account.
+# We also calculate the absolute x and y position of the top left vertex of
+# the object. This is required for images.
+#
+#    $x_abs, $y_abs
+#
+# The width and height of the cells that the object occupies can be variable
+# and have to be taken intoaccount.
 #
 # The values of $col_start and $row_start are passed in from the calling
 # function. The values of $col_end and $row_end are calculated by subtracting
@@ -3132,7 +3121,24 @@ sub _position_object {
     my $width;        # Width of object frame.
     my $height;       # Height of object frame.
 
+    my $x_abs = 0;    # Absolute distance to left side of object.
+    my $y_abs = 0;    # Absolute distance to top  side of object.
+
+
     ( $col_start, $row_start, $x1, $y1, $width, $height ) = @_;
+
+
+    # Calcuate the absolute x offset of the top-left vertex.
+    for my $col_id ( 1 .. $col_start ) {
+        $x_abs += $self->_size_col( $col_id );
+    }
+    $x_abs += $x1;
+
+    # Calcuate the absolute y offset of the top-left vertex.
+    for my $row_id ( 1 .. $row_start ) {
+        $y_abs += $self->_size_row( $row_id );
+    }
+    $y_abs += $y1;
 
 
     # Adjust start column for offsets that are greater than the col width.
@@ -3178,13 +3184,21 @@ sub _position_object {
     $x2 = $width;
     $y2 = $height;
 
-    # Convert the pixel values to EMUs. See above.
-    $x1 *= 9_525;
-    $y1 *= 9_525;
-    $x2 *= 9_525;
-    $y2 *= 9_525;
 
-    return ( $col_start, $row_start, $x1, $y1, $col_end, $row_end, $x2, $y2 );
+    # Convert the pixel values to EMUs. See above.
+    $x1    *= 9_525;
+    $y1    *= 9_525;
+    $x2    *= 9_525;
+    $y2    *= 9_525;
+    $x_abs *= 9_525;
+    $y_abs *= 9_525;
+
+    return (
+        $col_start, $row_start, $x1, $y1,
+        $col_end,   $row_end,   $x2, $y2,
+        $x_abs,     $y_abs
+
+    );
 }
 
 
@@ -3374,11 +3388,9 @@ sub _get_shared_string_index {
 }
 
 
-
-
 ###############################################################################
 #
-# insert_chart($row, $col, $chart, $x, $y, $scale_x, $scale_y)
+# insert_chart( $row, $col, $chart, $x, $y, $scale_x, $scale_y )
 #
 # Insert a chart into a worksheet. The $chart argument should be a Chart
 # object or else it is assumed to be a filename of an external binary file.
@@ -3388,7 +3400,7 @@ sub insert_chart {
 
     my $self = shift;
 
-    # Check for a cell reference in A1 notation and substitute row and column
+    # Check for a cell reference in A1 notation and substitute row and column.
     if ( $_[0] =~ /^\D/ ) {
         @_ = $self->_substitute_cellref( @_ );
     }
@@ -3428,26 +3440,27 @@ sub insert_chart {
 #
 sub _prepare_chart {
 
-    my $self       = shift;
-    my $index      = shift;
-    my $chart_id   = shift;
-    my $drawing_id = shift;
+    my $self         = shift;
+    my $index        = shift;
+    my $chart_id     = shift;
+    my $drawing_id   = shift;
+    my $drawing_type = 1;
 
     my ( $row, $col, $chart, $x_offset, $y_offset, $scale_x, $scale_y ) =
       @{ $self->{_charts}->[$index] };
 
-    my $width  = 480 * $scale_x;
-    my $height = 288 * $scale_y;
+    my $width  = int( 0.5 + ( 480 * $scale_x ) );
+    my $height = int( 0.5 + ( 288 * $scale_y ) );
 
     my @dimensions =
       $self->_position_object( $col, $row, $x_offset, $y_offset, $width,
         $height );
 
-
+    # Create a Drawing object to use with worksheet unless one already exists.
     if ( !$self->{_drawing} ) {
 
         my $drawing = Excel::Writer::XLSX::Drawing->new();
-        $drawing->_set_dimensions( @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions );
         $drawing->{_embedded} = 1;
 
         $self->{_drawing} = $drawing;
@@ -3457,12 +3470,12 @@ sub _prepare_chart {
     }
     else {
         my $drawing = $self->{_drawing};
-        $drawing->_set_dimensions( @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions );
 
     }
 
     push @{ $self->{_drawing_links} },
-      [ '/chart', '../charts/chart' . $chart_id ];
+      [ '/chart', '../charts/chart' . $chart_id . '.xml' ];
 }
 
 
@@ -3518,12 +3531,12 @@ sub _get_range_data {
                 elsif ( $type eq 'f' ) {
 
                     # Store a formula.
-                    push @data, $cell->[3];
+                    push @data, $cell->[3] // 0;
                 }
                 elsif ( $type eq 'a' ) {
 
                     # Store an array formula.
-                    push @data, $cell->[4];
+                    push @data, $cell->[4] // 0;
                 }
                 elsif ( $type eq 'l' ) {
 
@@ -3546,6 +3559,95 @@ sub _get_range_data {
 
     return @data;
 }
+
+
+###############################################################################
+#
+# insert_image( $row, $col, $filename, $x, $y, $scale_x, $scale_y )
+#
+# Insert an image into the worksheet.
+#
+sub insert_image {
+
+    my $self = shift;
+
+    # Check for a cell reference in A1 notation and substitute row and column.
+    if ( $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    my $row      = $_[0];
+    my $col      = $_[1];
+    my $image    = $_[2];
+    my $x_offset = $_[3] || 0;
+    my $y_offset = $_[4] || 0;
+    my $scale_x  = $_[5] || 1;
+    my $scale_y  = $_[6] || 1;
+
+    croak "Insufficient arguments in insert_image()" unless @_ >= 3;
+    croak "Couldn't locate $image: $!" unless -e $image;
+
+    push @{ $self->{_images} },
+      [ $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ];
+}
+
+
+###############################################################################
+#
+# _prepare_image()
+#
+# Set up image/drawings.
+#
+sub _prepare_image {
+
+    my $self         = shift;
+    my $index        = shift;
+    my $image_id     = shift;
+    my $drawing_id   = shift;
+    my $width        = shift;
+    my $height       = shift;
+    my $name         = shift;
+    my $image_type   = shift;
+    my $drawing_type = 2;
+    my $drawing;
+
+    my ( $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ) =
+      @{ $self->{_images}->[$index] };
+
+    $width  *= $scale_x;
+    $height *= $scale_y;
+
+    my @dimensions =
+      $self->_position_object( $col, $row, $x_offset, $y_offset, $width,
+        $height );
+
+    # Convert from pixels to emus.
+    $width  = int( 0.5 + ( $width * 9_525 ) );
+    $height = int( 0.5 + ( $height * 9_525 ) );
+
+    # Create a Drawing object to use with worksheet unless one already exists.
+    if ( !$self->{_drawing} ) {
+
+        $drawing = Excel::Writer::XLSX::Drawing->new();
+        $drawing->{_embedded} = 1;
+
+        $self->{_drawing} = $drawing;
+
+        push @{ $self->{_external_dlinks} },
+          [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
+    }
+    else {
+        $drawing = $self->{_drawing};
+    }
+
+    $drawing->_add_drawing_object( $drawing_type, @dimensions, $width, $height,
+        $name );
+
+
+    push @{ $self->{_drawing_links} },
+      [ '/image', '../media/image' .  $image_id . '.' . $image_type ];
+}
+
 
 
 ###############################################################################
@@ -3594,16 +3696,18 @@ sub write_utf16le_string {
     return $self->write_string( $_[0], $_[1], $utf8_string, $_[3] );
 }
 
-# No longer required. Only partially supported.
+# No longer required. Was used to avoid slow formula parsing.
 sub store_formula {
 
     my $self   = shift;
     my $string = shift;
 
-    return $string;
+    my @tokens = split /(\$?[A-I]?[A-Z]\$?\d+)/, $string;
+
+    return \@tokens;
 }
 
-# No longer required. Only partially supported. Doesn't do token substitution.
+# No longer required. Was used to avoid slow formula parsing.
 sub repeat_formula {
 
     my $self = shift;
@@ -3611,9 +3715,45 @@ sub repeat_formula {
     # Convert A1 notation if present.
     @_ = $self->_substitute_cellref( @_ ) if $_[0] =~ /^\D/;
 
-    return $self->write_formula( $_[0], $_[1], $_[2], $_[3] );
-}
+    if ( @_ < 2 ) { return -1 }    # Check the number of args
 
+    my $row         = shift;       # Zero indexed row
+    my $col         = shift;       # Zero indexed column
+    my $formula_ref = shift;       # Array ref with formula tokens
+    my $format      = shift;       # XF format
+    my @pairs       = @_;          # Pattern/replacement pairs
+
+
+    # Enforce an even number of arguments in the pattern/replacement list.
+    croak "Odd number of elements in pattern/replacement list" if @pairs % 2;
+
+    # Check that $formula is an array ref.
+    croak "Not a valid formula" if ref $formula_ref ne 'ARRAY';
+
+    my @tokens = @$formula_ref;
+
+    # Allow the user to specify the result of the formula by appending a
+    # result => $value pair to the end of the arguments.
+    my $value = undef;
+    if ( @pairs && $pairs[-2] eq 'result' ) {
+        $value = pop @pairs;
+        pop @pairs;
+    }
+
+    # Make the substitutions.
+    while ( @pairs ) {
+        my $pattern = shift @pairs;
+        my $replace = shift @pairs;
+
+        foreach my $token ( @tokens ) {
+            last if $token =~ s/$pattern/$replace/;
+        }
+    }
+
+    my $formula = join '', @tokens;
+
+    return $self->write_formula( $row, $col, $formula, $format, $value );
+}
 
 
 ###############################################################################

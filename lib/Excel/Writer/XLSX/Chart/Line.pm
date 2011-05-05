@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 
 ###############################################################################
@@ -35,7 +35,7 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
 
-    $self->{_default_marker} = 'none';
+    $self->{_default_marker} = { type => 'none' };
 
     bless $self, $class;
     return $self;

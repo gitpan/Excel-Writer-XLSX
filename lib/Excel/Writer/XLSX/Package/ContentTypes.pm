@@ -21,7 +21,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 
 ###############################################################################
@@ -232,6 +232,23 @@ sub _add_calc_chain {
 
     $self->_add_override( '/xl/calcChain.xml',
         $app_document . 'spreadsheetml.calcChain+xml' );
+}
+
+
+###############################################################################
+#
+# _add_image_types()
+#
+# Add the image default types.
+#
+sub _add_image_types {
+
+    my $self  = shift;
+    my %types = @_;
+
+    for my $type ( keys %types ) {
+        $self->_add_default( $type, 'image/' . $type );
+    }
 }
 
 

@@ -20,7 +20,7 @@ use Exporter;
 use Excel::Writer::XLSX::Worksheet;
 
 our @ISA     = qw(Excel::Writer::XLSX::Worksheet);
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 
 
 ###############################################################################
@@ -173,7 +173,7 @@ sub _prepare_chart {
       [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
 
     push @{ $self->{_drawing_links} },
-      [ '/chart', '../charts/chart' . $chart_id ];
+      [ '/chart', '../charts/chart' . $chart_id . '.xml' ];
 }
 
 
