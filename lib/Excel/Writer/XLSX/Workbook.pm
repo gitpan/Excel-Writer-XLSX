@@ -19,6 +19,7 @@ use strict;
 use warnings;
 use Carp;
 use IO::File;
+use File::Find;
 use File::Temp 'tempdir';
 use File::Basename 'fileparse';
 use Archive::Zip;
@@ -31,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 
 
 ###############################################################################
@@ -53,6 +54,7 @@ sub new {
     my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
 
     $self->{_filename}         = $_[0] || '';
+    $self->{_tempdir}          = undef;
     $self->{_1904}             = 0;
     $self->{_activesheet}      = 0;
     $self->{_firstsheet}       = 0;
@@ -352,6 +354,8 @@ sub add_chart {
         my $drawing    = Excel::Writer::XLSX::Drawing->new();
         my $chartsheet = Excel::Writer::XLSX::Chartsheet->new( @init_data );
 
+        $chart->{_palette} = $self->{_palette};
+
         $chartsheet->{_chart}   = $chart;
         $chartsheet->{_drawing} = $drawing;
 
@@ -618,16 +622,18 @@ sub set_color_palette {
 #
 # set_tempdir()
 #
-# Change the default temp directory used by _initialize() in Worksheet.pm.
+# Change the default temp directory.
 #
 sub set_tempdir {
 
     my $self = shift;
+    my $dir  = shift;
 
-    # TODO Update for SpreadsheetML format
+    croak "$dir is not a valid directory" if defined $dir and not -d $dir;
+
+    $self->{_tempdir} = $dir;
+
 }
-
-
 
 
 ###############################################################################
@@ -691,7 +697,7 @@ sub set_properties {
 sub _store_workbook {
 
     my $self     = shift;
-    my $dir      = tempdir( CLEANUP => 1 );
+    my $tempdir  = tempdir( CLEANUP => 1, DIR => $self->{_tempdir} );
     my $packager = Excel::Writer::XLSX::Package::Packager->new();
     my $zip      = Archive::Zip->new();
 
@@ -736,14 +742,34 @@ sub _store_workbook {
 
     # Package the workbook.
     $packager->_add_workbook( $self );
-    $packager->_set_package_dir( $dir );
+    $packager->_set_package_dir( $tempdir );
     $packager->_create_package();
 
     # Free up the Packager object.
     $packager = undef;
 
-    # Add the files to the zip archive.
-    $zip->addTree( $dir, '', sub { -f } );
+    # Add the files to the zip archive. Due to issues with Archive::Zip in
+    # taint mode we can't use addTree() so we have to build the file list
+    # with File::Find and pass each one to addFile().
+    my @xlsx_files;
+
+    my $wanted = sub { push @xlsx_files, $File::Find::name if -f };
+
+    File::Find::find(
+        {
+            wanted          => $wanted,
+            untaint         => 1,
+            untaint_pattern => qr|^(.+)$|
+        },
+        $tempdir
+    );
+
+    # Store the xlsx component files with the temp dir name removed.
+    for my $filename ( @xlsx_files ) {
+        my $short_name = $filename;
+        $short_name =~ s{^\Q$tempdir\E/?}{};
+        $zip->addFile( $filename, $short_name );
+    }
 
     if ( $zip->writeToFileHandle( $self->{_filehandle} ) != 0 ) {
         carp 'Error writing zip container for xlsx file.';
