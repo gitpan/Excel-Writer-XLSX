@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.20 of Excel::Writer::XLSX, released May 10, 2011.
+This document refers to version 0.21 of Excel::Writer::XLSX, released May 11, 2011.
 
 
 
@@ -4548,6 +4548,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     colors.pl               A demo of the colour palette and named colours.
     date_time.pl            Write dates and times with write_date_time().
     diag_border.pl          A simple example of diagonal cell borders.
+    filehandle.pl           Examples of working with filehandles.
     headers.pl              Examples of worksheet headers and footers.
     hide_sheet.pl           Simple example of hiding a worksheet.
     hyperlink1.pl           Shows how to create web hyperlinks.
@@ -4574,6 +4575,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     write_handler2.pl       Example of extending the write() method. Step 2.
     write_handler3.pl       Example of extending the write() method. Step 3.
     write_handler4.pl       Example of extending the write() method. Step 4.
+    write_to_scalar.pl      Example of writing an Excel file to a Perl scalar.
 
     Unicode
     =======
