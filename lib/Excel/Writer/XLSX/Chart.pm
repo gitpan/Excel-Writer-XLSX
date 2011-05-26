@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 
 ###############################################################################
@@ -512,6 +512,7 @@ sub _get_data_type {
 
     # If the token isn't a number assume it is a string.
     for my $token ( @$data ) {
+        next if !defined $token;
         return 'str'
           if $token !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/;
     }
@@ -3036,6 +3037,8 @@ sub _write_pt {
     my $self  = shift;
     my $idx   = shift;
     my $value = shift;
+
+    return if !defined $value;
 
     my @attributes = ( 'idx' => $idx );
 
