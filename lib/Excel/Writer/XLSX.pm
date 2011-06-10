@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.23 of Excel::Writer::XLSX, released May 26, 2011.
+This document refers to version 0.24 of Excel::Writer::XLSX, released June 11, 2011.
 
 
 
@@ -1516,8 +1516,6 @@ The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted ima
 
 
 =head2 data_validation()
-
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
 
 The C<data_validation()> method is used to construct an Excel data validation or to limit the user input to a dropdown list of values.
 
@@ -3743,8 +3741,6 @@ The following sections describe how to use the C<data_validation()> method and i
 
 =head2 data_validation( $row, $col, { parameter => 'value', ... } )
 
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
-
 The C<data_validation()> method is used to construct an Excel data validation.
 
 It can be applied to a single cell or a range of cells. You can pass 3 parameters such as C<($row, $col, {...})> or 5 parameters such as C<($first_row, $first_col, $last_row, $last_col, {...})>. You can also use C<A1> style notation. For example:
@@ -3918,7 +3914,7 @@ The C<value> parameter is used to set the limiting value to which the C<criteria
 
     # Use 'source'
     validate => 'list',
-    source   => 'B1:B3',
+    source   => '$B$1:$B$3',
 
 
 =head2 maximum
@@ -4086,7 +4082,7 @@ Example 5. Limiting input to a value in a dropdown list where the list is specif
     $worksheet->data_validation('A5',
         {
             validate        => 'list',
-            source          => '=E4:G4',
+            source          => '=$E$4:$G$4',
         });
 
 Example 6. Limiting input to a date in a fixed range.
@@ -4546,6 +4542,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     chart_scatter.pl        A demo of scatter style charts.
     chart_stock.pl          A demo of stock style charts.
     colors.pl               A demo of the colour palette and named colours.
+    data_validate.pl        An example of data validation and dropdown lists.
     date_time.pl            Write dates and times with write_date_time().
     diag_border.pl          A simple example of diagonal cell borders.
     filehandle.pl           Examples of working with filehandles.
@@ -4617,8 +4614,9 @@ However, it doesn't currently support all of the features of Spreadsheet::WriteE
     Images (partial support)
     Defined names.
     Cell comments.
-    Data validation.
     Outlines.
+
+Excel::Writer::XLSX requires perl 5.10.0 while Spreadsheet::WriteExcel requires perl 5.005. See the L<REQUIREMENTS> section below for more details.
 
 The following is a full list of the module methods and their support status:
 
@@ -4659,7 +4657,7 @@ The following is a full list of the module methods and their support status:
     add_write_handler()         Yes
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
-    data_validation()           No
+    data_validation()           Yes
     get_name()                  Yes
     activate()                  Yes
     select()                    Yes
@@ -4751,15 +4749,9 @@ All non-deprecated methods will be supported in time unless no longer required. 
     insert_image() (currently partially supported)
 
     write_comment()
-    data_validation()
     outline_settings()
 
 If you would care to you can sponsor a feature to move it up the list. See L<DONATIONS and SPONSORSHIP>
-
-
-=head1 DOWNLOADING
-
-The latest version of this module is always available at: L<http://search.cpan.org/search?dist=Excel-Writer-XLSX/>.
 
 
 
@@ -4767,6 +4759,17 @@ The latest version of this module is always available at: L<http://search.cpan.o
 =head1 REQUIREMENTS
 
 L<http://search.cpan.org/search?dist=Archive-Zip/>.
+
+Perl 5.10.0.
+
+Perl 5.10.0 came out the same year as Excel 2007. Supporting older versions of perl is a drain on the authors time. However, if you don't have the option of using a more recent perl there is a perl 5.8.2 tracking branch of Excel::Writer::XLSX on GitHub: L<http://github.com/jmcnamara/excel-writer-xlsx/tree/perl5.8.2>.
+
+
+
+
+=head1 DOWNLOADING
+
+The latest version of this module is always available at: L<http://search.cpan.org/search?dist=Excel-Writer-XLSX/>.
 
 
 
