@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.24 of Excel::Writer::XLSX, released June 11, 2011.
+This document refers to version 0.25 of Excel::Writer::XLSX, released June 16, 2011.
 
 
 
@@ -394,17 +394,24 @@ See also the C<properties.pl> program in the examples directory of the distro.
 
 =head2 define_name()
 
-Not implemented yet, see L<Compatibility with Spreadsheet::WriteExcel>.
-
 This method is used to defined a name that can be used to represent a value, a single cell or a range of cells in a workbook.
 
+For example to set a global/workbook name:
+
+    # Global/workbook names.
     $workbook->define_name( 'Exchange_rate', '=0.96' );
     $workbook->define_name( 'Sales',         '=Sheet1!$G$1:$H$10' );
+
+It is also possible to define a local/worksheet name by prefixing the name with the sheet name using the syntax C<sheetname!definedname>:
+
+    # Local/worksheet name.
     $workbook->define_name( 'Sheet2!Sales',  '=Sheet2!$G$1:$G$10' );
 
-See the defined_name.pl program in the examples dir of the distro.
+If the sheet name contains spaces or special characters you must enclose it in single quotes like in Excel:
 
-Note: This currently a beta feature. More documentation and examples will be added.
+    $workbook->define_name( "'New Data'!Sales",  '=Sheet2!$G$1:$G$10' );
+
+See the defined_name.pl program in the examples dir of the distro.
 
 
 
@@ -2475,11 +2482,9 @@ The C<fit_to_pages()> method is used to fit the printed area to a specific numbe
 
 The print area can be defined using the C<print_area()> method as described above.
 
-A common requirement is to fit the printed output to I<n> pages wide but have the height be as long as necessary. To achieve this set the C<$height> to zero or leave it blank:
+A common requirement is to fit the printed output to I<n> pages wide but have the height be as long as necessary. To achieve this set the C<$height> to zero:
 
     $worksheet1->fit_to_pages( 1, 0 );    # 1 page wide and as long as necessary
-    $worksheet2->fit_to_pages( 1 );       # The same
-
 
 Note that although it is valid to use both C<fit_to_pages()> and C<set_print_scale()> on the same worksheet only one of these options can be active at a time. The last method call made will set the active option.
 
@@ -4544,6 +4549,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     colors.pl               A demo of the colour palette and named colours.
     data_validate.pl        An example of data validation and dropdown lists.
     date_time.pl            Write dates and times with write_date_time().
+    defined_name.pl         Example of how to create defined names.
     diag_border.pl          A simple example of diagonal cell borders.
     filehandle.pl           Examples of working with filehandles.
     headers.pl              Examples of worksheet headers and footers.
@@ -4612,7 +4618,6 @@ The C<Excel::Writer::XLSX> module uses the same interface as the C<Spreadsheet::
 However, it doesn't currently support all of the features of Spreadsheet::WriteExcel. The main features that aren't yet supported are:
 
     Images (partial support)
-    Defined names.
     Cell comments.
     Outlines.
 
@@ -4628,7 +4633,7 @@ The following is a full list of the module methods and their support status:
     add_chart()                 Yes
     close()                     Yes
     set_properties()            Yes
-    define_name()               No
+    define_name()               Yes
     set_tempdir()               Yes
     set_custom_color()          Yes
     sheets()                    Yes
@@ -4745,10 +4750,8 @@ The following is a full list of the module methods and their support status:
 
 All non-deprecated methods will be supported in time unless no longer required. The missing features will be added in approximately the following order which is based on work effort and desirability:
 
-    define_name()
-    insert_image() (currently partially supported)
-
     write_comment()
+    insert_image() (currently partially supported)
     outline_settings()
 
 If you would care to you can sponsor a feature to move it up the list. See L<DONATIONS and SPONSORSHIP>
@@ -4761,8 +4764,6 @@ If you would care to you can sponsor a feature to move it up the list. See L<DON
 L<http://search.cpan.org/search?dist=Archive-Zip/>.
 
 Perl 5.10.0.
-
-Perl 5.10.0 came out the same year as Excel 2007. Supporting older versions of perl is a drain on the authors time. However, if you don't have the option of using a more recent perl there is a perl 5.8.2 tracking branch of Excel::Writer::XLSX on GitHub: L<http://github.com/jmcnamara/excel-writer-xlsx/tree/perl5.8.2>.
 
 
 
