@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 
 ###############################################################################
@@ -144,27 +144,36 @@ sub new {
 
     $self->{prev_col} = -1;
 
-    $self->{_table}   = [];
-    $self->{_merge}   = [];
-    $self->{_comment} = {};
+    $self->{_table} = [];
+    $self->{_merge} = [];
+
+    $self->{_has_comments}     = 0;
+    $self->{_comments}         = {};
+    $self->{_comments_array}   = [];
+    $self->{_comments_author}  = '';
+    $self->{_comments_visible} = 0;
+    $self->{_vml_shape_id}     = 1024;
 
     $self->{_autofilter}   = '';
     $self->{_filter_on}    = 0;
     $self->{_filter_range} = [];
     $self->{_filter_cols}  = {};
 
-    $self->{_col_sizes}   = {};
-    $self->{_row_sizes}   = {};
-    $self->{_col_formats} = {};
+    $self->{_col_sizes}        = {};
+    $self->{_row_sizes}        = {};
+    $self->{_col_formats}      = {};
+    $self->{_col_size_changed} = 0;
+    $self->{_row_size_changed} = 0;
 
-    $self->{_hlink_count}     = 0;
-    $self->{_hlink_refs}      = [];
-    $self->{_external_hlinks} = [];
-    $self->{_external_dlinks} = [];
-    $self->{_drawing_links}   = [];
-    $self->{_charts}          = [];
-    $self->{_images}          = [];
-    $self->{_drawing}         = 0;
+    $self->{_hlink_count}            = 0;
+    $self->{_hlink_refs}             = [];
+    $self->{_external_hyper_links}   = [];
+    $self->{_external_drawing_links} = [];
+    $self->{_external_comment_links} = [];
+    $self->{_drawing_links}          = [];
+    $self->{_charts}                 = [];
+    $self->{_images}                 = [];
+    $self->{_drawing}                = 0;
 
     $self->{_rstring} = '';
 
@@ -253,6 +262,9 @@ sub _assemble_xml_file {
     # Write the drawing element.
     $self->_write_drawings();
 
+    # Write the legacyDrawing element.
+    $self->_write_legacy_drawing();
+
     # Write the worksheet extension storage.
     #$self->_write_ext_lst();
 
@@ -277,7 +289,6 @@ sub _close {
     my $self       = shift;
     my $sheetnames = shift;
     my $num_sheets = scalar @$sheetnames;
-
 }
 
 
@@ -510,6 +521,9 @@ sub set_column {
 
     # Store the column data.
     push @{ $self->{_colinfo} }, [@data];
+
+    # Store the column change to allow optimisations.
+    $self->{_col_size_changed} = 1;
 
     # Store the col sizes for use when calculating image vertices taking
     # hidden columns into account. Also store the column formats.
@@ -1570,6 +1584,34 @@ sub keep_leading_zeros {
 
 ###############################################################################
 #
+# show_comments()
+#
+# Make any comments in the worksheet visible.
+#
+sub show_comments {
+
+    my $self = shift;
+
+    $self->{_comments_visible} = defined $_[0] ? $_[0] : 1;
+}
+
+
+###############################################################################
+#
+# set_comments_author()
+#
+# Set the default author of the cell comments.
+#
+sub set_comments_author {
+
+    my $self = shift;
+
+    $self->{_comments_author} = $_[0] if defined $_[0];
+}
+
+
+###############################################################################
+#
 # right_to_left()
 #
 # Display the worksheet right to left for some eastern versions of Excel.
@@ -1647,8 +1689,8 @@ sub set_first_row_column {
     my $row = $_[0] || 0;
     my $col = $_[1] || 0;
 
-    $row = 65535 if $row > 65535;
-    $col = 255   if $col > 255;
+    $row = $self->{_xls_rowmax} if $row > $self->{_xls_rowmax};
+    $col = $self->{_xls_colmax} if $col > $self->{_xls_colmax};
 
     $self->{_first_row} = $row;
     $self->{_first_col} = $col;
@@ -1862,62 +1904,36 @@ sub write_col {
 #
 # write_comment($row, $col, $comment)
 #
-# Write a comment to the specified row and column (zero indexed). The maximum
-# comment size is 30831 chars. Excel5 probably accepts 32k-1 chars. However, it
-# can only display 30831 chars. Excel 7 and 2000 will crash above 32k-1.
-#
-# In Excel 5 a comment is referred to as a NOTE.
+# Write a comment to the specified row and column (zero indexed).
 #
 # Returns  0 : normal termination
 #         -1 : insufficient number of arguments
 #         -2 : row or column out of range
-#         -3 : long comment truncated to 30831 chars
 #
 sub write_comment {
 
     my $self = shift;
 
     # Check for a cell reference in A1 notation and substitute row and column
-    if ( $_[0] =~ /^\D/ ) {
-        @_ = $self->_substitute_cellref( @_ );
+    if ($_[0] =~ /^\D/) {
+        @_ = $self->_substitute_cellref(@_);
     }
 
+    if (@_ < 3) { return -1 } # Check the number of args
 
-    if ( @_ < 3 ) { return -1 }    # Check the number of args
+    my $row = $_[0];
+    my $col = $_[1];
 
-    my $row     = $_[0];
-    my $col     = $_[1];
-    my $comment = $_[2];
-    my $length  = length( $_[2] );
-    my $error   = 0;
-    my $max_len = 30831;             # Maintain same max as binary file.
-    my $type    = 99;
+    # Check for pairs of optional arguments, i.e. an odd number of args.
+    croak "Uneven number of additional arguments" unless @_ % 2;
 
     # Check that row and col are valid and store max and min values
-    return -2 if $self->_check_dimensions( $row, $col );
+    return -2 if $self->_check_dimensions($row, $col);
 
-    # String must be <= 30831 chars
-    if ( $length > $max_len ) {
-        $comment = substr( $comment, 0, $max_len );
-        $error = -3;
-    }
+    $self->{_has_comments} = 1;
 
-
-    # Check that row and col are valid and store max and min values
-    return -2 if $self->_check_dimensions( $row, $col );
-
-
-    # Add a datatype to the cell if it doesn't already contain one.
-    # This prevents an empty cell with a comment from being ignored.
-    #
-    if ( not $self->{_table}->[$row]->[$col] ) {
-        $self->{_table}->[$row]->[$col] = [$type];
-    }
-
-    # Store the comment.
-    $self->{_comment}->{$row}->{$col} = $comment;
-
-    return $error;
+    # Process the properties of the cell comment.
+    $self->{_comments}->{$row}->{$col} = [ $self->_comment_params(@_) ];
 }
 
 
@@ -2018,7 +2034,7 @@ sub write_string {
 #         -1 : insufficient number of arguments.
 #         -2 : row or column out of range.
 #         -3 : long string truncated to 32767 chars.
-#         -4 : 2 consequtive formats used.
+#         -4 : 2 consecutive formats used.
 #
 sub write_rich_string {
 
@@ -2668,10 +2684,11 @@ sub set_row {
         $self->{_outline_row_level} = $level;
     }
 
-
     # Store the row properties.
     $self->{_set_rows}->{$row} = [ $height, $xf, $hidden, $level, $collapsed ];
 
+    # Store the row change to allow optimisations.
+    $self->{_row_size_changed} = 1;
 
     # Store the row sizes for use when calculating image vertices.
     $self->{_row_sizes}->{$row} = $height;
@@ -2693,15 +2710,16 @@ sub merge_range {
     if ( $_[0] =~ /^\D/ ) {
         @_ = $self->_substitute_cellref( @_ );
     }
-    croak "Incorrect number of arguments" if @_ != 6;
-    croak "Final argument must be a format object" unless ref $_[5];
+    croak "Incorrect number of arguments" if @_ < 6;
+    croak "Fifth parameter must be a format object" unless ref $_[5];
 
-    my $rwFirst  = $_[0];
-    my $colFirst = $_[1];
-    my $rwLast   = $_[2];
-    my $colLast  = $_[3];
-    my $string   = $_[4];
-    my $format   = $_[5];
+    my $rwFirst    = shift;
+    my $colFirst   = shift;
+    my $rwLast     = shift;
+    my $colLast    = shift;
+    my $string     = shift;
+    my $format     = shift;
+    my @extra_args = @_; # For write_url().
 
 
     # Excel doesn't allow a single cell to be merged
@@ -2720,7 +2738,7 @@ sub merge_range {
     push @{ $self->{_merge} }, [ $rwFirst, $colFirst, $rwLast, $colLast ];
 
     # Write the first cell
-    $self->write( $rwFirst, $colFirst, $string, $format );
+    $self->write( $rwFirst, $colFirst, $string, $format, @extra_args );
 
     # Pad out the rest of the area with formatted blank cells.
     for my $row ( $rwFirst .. $rwLast ) {
@@ -2731,6 +2749,9 @@ sub merge_range {
     }
 }
 
+#
+# TODO Abstract merge_range() into merge_range_type();
+#
 
 ###############################################################################
 #
@@ -3234,95 +3255,10 @@ sub _check_dimensions {
 
 ###############################################################################
 #
-# _store_defcol()
-#
-# Write BIFF record DEFCOLWIDTH if COLINFO records are in use.
-#
-sub _store_defcol {
-
-    my $self   = shift;
-    my $record = 0x0055;    # Record identifier
-    my $length = 0x0002;    # Number of bytes to follow
-
-    my $colwidth = 0x0008;  # Default column width
-
-    # TODO Update for SpreadsheetML format
-}
-
-
-###############################################################################
-#
-# _store_externcount($count)
-#
-# Write BIFF record EXTERNCOUNT to indicate the number of external sheet
-# references in a worksheet.
-#
-# Excel only stores references to external sheets that are used in formulas.
-# For simplicity we store references to all the sheets in the workbook
-# regardless of whether they are used or not. This reduces the overall
-# complexity and eliminates the need for a two way dialogue between the formula
-# parser the worksheet objects.
-#
-sub _store_externcount {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self   = shift;
-    my $record = 0x0016;    # Record identifier
-    my $length = 0x0002;    # Number of bytes to follow
-
-    my $cxals = $_[0];      # Number of external references
-
-    # TODO Update for SpreadsheetML format
-}
-
-
-###############################################################################
-#
-# _store_externsheet($sheetname)
-#
-#
-# Writes the Excel BIFF EXTERNSHEET record. These references are used by
-# formulas. A formula references a sheet name via an index. Since we store a
-# reference to all of the external worksheets the EXTERNSHEET index is the same
-# as the worksheet index.
-#
-sub _store_externsheet {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-
-    my $record = 0x0017;    # Record identifier
-    my $length;             # Number of bytes to follow
-
-    my $sheetname = $_[0];  # Worksheet name
-    my $cch;                # Length of sheet name
-    my $rgch;               # Filename encoding
-
-    # References to the current sheet are encoded differently to references to
-    # external sheets.
-    #
-    if ( $self->{_name} eq $sheetname ) {
-        $sheetname = '';
-        $length    = 0x02;    # The following 2 bytes
-        $cch       = 1;       # The following byte
-        $rgch      = 0x02;    # Self reference
-    }
-    else {
-        $length = 0x02 + length( $_[0] );
-        $cch    = length( $sheetname );
-        $rgch = 0x03;         # Reference to a sheet in the current workbook
-    }
-}
-
-
-###############################################################################
-#
-#  _position_object()
+#  _position_object_pixels()
 #
 # Calculate the vertices that define the position of a graphical object within
-# the worksheet.
+# the worksheet in pixels.
 #
 #         +------------+------------+
 #         |     A      |      B     |
@@ -3350,17 +3286,14 @@ sub _store_externsheet {
 #    $x_abs, $y_abs
 #
 # The width and height of the cells that the object occupies can be variable
-# and have to be taken intoaccount.
+# and have to be taken into account.
 #
 # The values of $col_start and $row_start are passed in from the calling
 # function. The values of $col_end and $row_end are calculated by subtracting
 # the width and height of the object from the width and height of the
 # underlying cells.
 #
-# The vertices are expressed as English Metric Units (EMUs). There are 12,700
-# EMUs per point. Therefore, 12,700 * 3 /4 = 9,525 EMUs per pixel.
-#
-sub _position_object {
+sub _position_object_pixels {
 
     my $self = shift;
 
@@ -3382,20 +3315,35 @@ sub _position_object {
     my $x_abs = 0;    # Absolute distance to left side of object.
     my $y_abs = 0;    # Absolute distance to top  side of object.
 
+    my $is_drawing = 0;
 
-    ( $col_start, $row_start, $x1, $y1, $width, $height ) = @_;
+    ( $col_start, $row_start, $x1, $y1, $width, $height, $is_drawing) = @_;
 
-
-    # Calcuate the absolute x offset of the top-left vertex.
-    for my $col_id ( 1 .. $col_start ) {
-        $x_abs += $self->_size_col( $col_id );
+    # Calculate the absolute x offset of the top-left vertex.
+    if ( $self->{_col_size_changed} ) {
+        for my $col_id ( 1 .. $col_start ) {
+            $x_abs += $self->_size_col( $col_id );
+        }
     }
+    else {
+        # Optimisation for when the column widths haven't changed.
+        $x_abs += 64 * $col_start;
+    }
+
     $x_abs += $x1;
 
-    # Calcuate the absolute y offset of the top-left vertex.
-    for my $row_id ( 1 .. $row_start ) {
-        $y_abs += $self->_size_row( $row_id );
+    # Calculate the absolute y offset of the top-left vertex.
+    # Store the column change to allow optimisations.
+    if ( $self->{_row_size_changed} ) {
+        for my $row_id ( 1 .. $row_start ) {
+            $y_abs += $self->_size_row( $row_id );
+        }
     }
+    else {
+        # Optimisation for when the row heights haven't changed.
+        $y_abs += 20 * $row_start;
+    }
+
     $y_abs += $y1;
 
 
@@ -3433,15 +3381,47 @@ sub _position_object {
         $row_end++;
     }
 
-
-    $col_end-- if $width == 0;
-    $row_end-- if $height == 0;
-
+    # The following is only required for positioning drawing/chart objects
+    # and not comments. It is probably the result of a bug.
+    if ( $is_drawing ) {
+        $col_end-- if $width == 0;
+        $row_end-- if $height == 0;
+    }
 
     # The end vertices are whatever is left from the width and height.
     $x2 = $width;
     $y2 = $height;
 
+    return (
+        $col_start, $row_start, $x1, $y1,
+        $col_end,   $row_end,   $x2, $y2,
+        $x_abs,     $y_abs
+
+    );
+}
+
+
+###############################################################################
+#
+#  _position_object_emus()
+#
+# Calculate the vertices that define the position of a graphical object within
+# the worksheet in EMUs.
+#
+# The vertices are expressed as English Metric Units (EMUs). There are 12,700
+# EMUs per point. Therefore, 12,700 * 3 /4 = 9,525 EMUs per pixel.
+#
+sub _position_object_emus {
+
+    my $self       = shift;
+    my $is_drawing = 1;
+
+    my (
+        $col_start, $row_start, $x1, $y1,
+        $col_end,   $row_end,   $x2, $y2,
+        $x_abs,     $y_abs
+
+    ) = $self->_position_object_pixels( @_, $is_drawing );
 
     # Convert the pixel values to EMUs. See above.
     $x1    *= 9_525;
@@ -3530,25 +3510,6 @@ sub _size_row {
     }
 
     return $pixels;
-}
-
-
-###############################################################################
-#
-# _store_comment
-#
-# Store the Excel 5 NOTE record. This format is not compatible with the Excel 7
-# record.
-#
-sub _store_comment {
-
-    # TODO. Unused. Remove after refactoring.
-
-    my $self = shift;
-    if ( @_ < 3 ) { return -1 }
-
-    # TODO Update for SpreadsheetML format
-
 }
 
 
@@ -3711,7 +3672,7 @@ sub _prepare_chart {
     my $height = int( 0.5 + ( 288 * $scale_y ) );
 
     my @dimensions =
-      $self->_position_object( $col, $row, $x_offset, $y_offset, $width,
+      $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
         $height );
 
     # Create a Drawing object to use with worksheet unless one already exists.
@@ -3723,7 +3684,7 @@ sub _prepare_chart {
 
         $self->{_drawing} = $drawing;
 
-        push @{ $self->{_external_dlinks} },
+        push @{ $self->{_external_drawing_links} },
           [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
     }
     else {
@@ -3872,7 +3833,7 @@ sub _prepare_image {
     $height *= $scale_y;
 
     my @dimensions =
-      $self->_position_object( $col, $row, $x_offset, $y_offset, $width,
+      $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
         $height );
 
     # Convert from pixels to emus.
@@ -3887,7 +3848,7 @@ sub _prepare_image {
 
         $self->{_drawing} = $drawing;
 
-        push @{ $self->{_external_dlinks} },
+        push @{ $self->{_external_drawing_links} },
           [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
     }
     else {
@@ -3902,6 +3863,227 @@ sub _prepare_image {
       [ '/image', '../media/image' .  $image_id . '.' . $image_type ];
 }
 
+
+###############################################################################
+#
+# _prepare_comments()
+#
+# Turn the HoH that stores the comments into an array for easier handling
+# and set the external links.
+#
+sub _prepare_comments {
+
+    my $self         = shift;
+    my $vml_data_id  = shift;
+    my $vml_shape_id = shift;
+    my $comment_id   = shift;
+    my @comments;
+
+    # We sort the comments by row and column but that isn't strictly required.
+    my @rows = sort { $a <=> $b } keys %{ $self->{_comments} };
+
+    for my $row ( @rows ) {
+        my @cols = sort { $a <=> $b } keys %{ $self->{_comments}->{$row} };
+
+        for my $col ( @cols ) {
+
+            # Set comment visibility if required and not already user defined.
+            if ( $self->{_comments_visible} ) {
+                if ( !defined $self->{_comments}->{$row}->{$col}->[4] ) {
+                    $self->{_comments}->{$row}->{$col}->[4] = 1;
+                }
+            }
+
+            # Set comment author if not already user defined.
+            if ( !defined $self->{_comments}->{$row}->{$col}->[3] ) {
+                $self->{_comments}->{$row}->{$col}->[3] =
+                  $self->{_comments_author};
+            }
+
+            push @comments, $self->{_comments}->{$row}->{$col};
+        }
+    }
+
+    $self->{_comments_array} = \@comments;
+
+    push @{ $self->{_external_comment_links} },
+      [ '/vmlDrawing', '../drawings/vmlDrawing' . $comment_id . '.vml' ],
+      [ '/comments',   '../comments' . $comment_id . '.xml' ];
+
+    my $count         = scalar @comments;
+    my $start_data_id = $vml_data_id;
+
+    # The VML o:idmap data id contains a comma separated range when there is
+    # more than one 1024 block of comments, like this: data="1,2".
+    for my $i ( 1 .. int( $count / 1024 ) ) {
+        $vml_data_id = "$vml_data_id," . ( $start_data_id + $i );
+    }
+
+    $self->{_vml_data_id}  = $vml_data_id;
+    $self->{_vml_shape_id} = $vml_shape_id;
+
+    return $count;
+}
+
+
+###############################################################################
+#
+# _comment_params()
+#
+# This method handles the additional optional parameters to write_comment() as
+# well as calculating the comment object position and vertices.
+#
+sub _comment_params {
+
+    my $self = shift;
+
+    my $row    = shift;
+    my $col    = shift;
+    my $string = shift;
+
+    my $default_width  = 128;
+    my $default_height = 74;
+
+    my %params = (
+        author          => undef,
+        color           => 81,
+        start_cell      => undef,
+        start_col       => undef,
+        start_row       => undef,
+        visible         => undef,
+        width           => $default_width,
+        height          => $default_height,
+        x_offset        => undef,
+        x_scale         => 1,
+        y_offset        => undef,
+        y_scale         => 1,
+    );
+
+
+    # Overwrite the defaults with any user supplied values. Incorrect or
+    # misspelled parameters are silently ignored.
+    %params = ( %params, @_ );
+
+
+    # Ensure that a width and height have been set.
+    $params{width}  = $default_width  if not $params{width};
+    $params{height} = $default_height if not $params{height};
+
+
+    # Limit the string to the max number of chars.
+    my $max_len = 32767;
+
+    if ( length( $string ) > $max_len ) {
+        $string = substr( $string, 0, $max_len );
+    }
+
+
+    # Set the comment background colour.
+    my $color    = $params{color};
+    my $color_id = &Excel::Writer::XLSX::Format::_get_color( $color );
+
+    if ( $color_id == 0 ) {
+        $params{color} = '#ffffe1';
+    }
+    else {
+        my $palette = $self->{_palette};
+
+        # Get the RGB color from the palette.
+        my @rgb = @{ $palette->[ $color_id - 8 ] };
+        my $rgb_color = sprintf "%02x%02x%02x", @rgb;
+
+        # Minor modification to allow comparison testing. Change RGB colors
+        # from long format, ffcc00 to short format fc0 used by VML.
+        $rgb_color =~ s/^([0-9a-f])\1([0-9a-f])\2([0-9a-f])\3$/$1$2$3/;
+
+        $params{color} = sprintf "#%s [%d]\n", $rgb_color, $color_id;
+    }
+
+
+    # Convert a cell reference to a row and column.
+    if ( defined $params{start_cell} ) {
+        my ( $row, $col ) = $self->_substitute_cellref( $params{start_cell} );
+        $params{start_row} = $row;
+        $params{start_col} = $col;
+    }
+
+
+    # Set the default start cell and offsets for the comment. These are
+    # generally fixed in relation to the parent cell. However there are
+    # some edge cases for cells at the, er, edges.
+    #
+    my $row_max = $self->{_xls_rowmax};
+    my $col_max = $self->{_xls_colmax};
+
+    if ( not defined $params{start_row} ) {
+
+        if    ( $row == 0 )            { $params{start_row} = 0 }
+        elsif ( $row == $row_max - 3 ) { $params{start_row} = $row_max - 7 }
+        elsif ( $row == $row_max - 2 ) { $params{start_row} = $row_max - 6 }
+        elsif ( $row == $row_max - 1 ) { $params{start_row} = $row_max - 5 }
+        else                           { $params{start_row} = $row - 1 }
+    }
+
+    if ( not defined $params{y_offset} ) {
+
+        if    ( $row == 0 )            { $params{y_offset} = 2 }
+        elsif ( $row == $row_max - 3 ) { $params{y_offset} = 16 }
+        elsif ( $row == $row_max - 2 ) { $params{y_offset} = 16 }
+        elsif ( $row == $row_max - 1 ) { $params{y_offset} = 14 }
+        else                           { $params{y_offset} = 10 }
+    }
+
+    if ( not defined $params{start_col} ) {
+
+        if    ( $col == $col_max - 3 ) { $params{start_col} = $col_max - 6 }
+        elsif ( $col == $col_max - 2 ) { $params{start_col} = $col_max - 5 }
+        elsif ( $col == $col_max - 1 ) { $params{start_col} = $col_max - 4 }
+        else                           { $params{start_col} = $col + 1 }
+    }
+
+    if ( not defined $params{x_offset} ) {
+
+        if    ( $col == $col_max - 3 ) { $params{x_offset} = 49 }
+        elsif ( $col == $col_max - 2 ) { $params{x_offset} = 49 }
+        elsif ( $col == $col_max - 1 ) { $params{x_offset} = 49 }
+        else                           { $params{x_offset} = 15 }
+    }
+
+
+    # Scale the size of the comment box if required.
+    if ( $params{x_scale} ) {
+        $params{width} = $params{width} * $params{x_scale};
+    }
+
+    if ( $params{y_scale} ) {
+        $params{height} = $params{height} * $params{y_scale};
+    }
+
+    # Round the dimensions to the nearest pixel.
+    $params{width}  = int( 0.5 + $params{width} );
+    $params{height} = int( 0.5 + $params{height} );
+
+    # Calculate the positions of comment object.
+    my @vertices = $self->_position_object_pixels(
+        $params{start_col}, $params{start_row}, $params{x_offset},
+        $params{y_offset},  $params{width},     $params{height}
+      );
+
+    # Add the width and height for VML.
+    push @vertices, ( $params{width}, $params{height} );
+
+    return (
+        $row,
+        $col,
+        $string,
+
+        $params{author},
+        $params{visible},
+        $params{color},
+
+        [@vertices]
+    );
+}
 
 
 ###############################################################################
@@ -4430,15 +4612,19 @@ sub _write_rows {
 
     for my $row_num ( $self->{_dim_rowmin} .. $self->{_dim_rowmax} ) {
 
-        # Skip row if it doesn't contain row formatting or cell data.
-        if ( !$self->{_set_rows}->{$row_num} && !$self->{_table}->[$row_num] ) {
+        # Skip row if it doesn't contain row formatting, cell data or a comment.
+        if (   !$self->{_set_rows}->{$row_num}
+            && !$self->{_table}->[$row_num]
+            && !$self->{_comments}->{$row_num} )
+        {
             next;
         }
 
+        my $span_index = int( $row_num / 16 );
+        my $span       = $self->{_row_spans}->[$span_index];
+
         # Write the cells if the row contains data.
         if ( my $row_ref = $self->{_table}->[$row_num] ) {
-            my $span_index = int( $row_num / 16 );
-            my $span       = $self->{_row_spans}->[$span_index];
 
             if ( !$self->{_set_rows}->{$row_num} ) {
                 $self->_write_row( $row_num, $span );
@@ -4456,6 +4642,11 @@ sub _write_rows {
             }
 
             $self->{_writer}->endTag( 'row' );
+        }
+        elsif ( $self->{_comments}->{$row_num} ) {
+
+            $self->_write_empty_row( $row_num, $span,
+                @{ $self->{_set_rows}->{$row_num} } );
         }
         else {
 
@@ -4487,10 +4678,29 @@ sub _calculate_spans {
 
     for my $row_num ( $self->{_dim_rowmin} .. $self->{_dim_rowmax} ) {
 
+        # Calculate spans for cell data.
         if ( my $row_ref = $self->{_table}->[$row_num] ) {
 
             for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
                 if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+
+                    if ( !defined $span_min ) {
+                        $span_min = $col_num;
+                        $span_max = $col_num;
+                    }
+                    else {
+                        $span_min = $col_num if $col_num < $span_min;
+                        $span_max = $col_num if $col_num > $span_max;
+                    }
+                }
+            }
+        }
+
+        # Calculate spans for comments.
+        if ( defined $self->{_comments}->{$row_num} ) {
+
+            for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
+                if ( defined $self->{_comments}->{$row_num}->{$col_num} ) {
 
                     if ( !defined $span_min ) {
                         $span_min = $col_num;
@@ -4568,7 +4778,11 @@ sub _write_row {
 sub _write_empty_row {
 
     my $self = shift;
-    $self->_write_row( @_, 1 );
+
+    # Set the $empty_row parameter.
+    $_[7] = 1;
+
+    $self->_write_row( @_);
 }
 
 
@@ -4671,7 +4885,7 @@ sub _write_cell {
                 ++$self->{_hlink_count}, $cell->[5], $cell->[6]
               ];
 
-            push @{ $self->{_external_hlinks} },
+            push @{ $self->{_external_hyper_links} },
               [ '/hyperlink', $cell->[4], 'External' ];
         }
         elsif ( $link_type ) {
@@ -5772,6 +5986,30 @@ sub _write_drawing {
 }
 
 
+##############################################################################
+#
+# _write_legacy_drawing()
+#
+# Write the <legacyDrawing> element.
+#
+sub _write_legacy_drawing {
+
+    my $self = shift;
+    my $id;
+
+    return unless $self->{_has_comments};
+
+    # Increment the relationship id for any drawings or comments.
+    $id = $self->{_hlink_count} + 1;
+    $id++ if $self->{_drawing};
+
+
+    my @attributes = ( 'r:id' => 'rId' . $id );
+
+    $self->{_writer}->emptyTag( 'legacyDrawing', @attributes );
+}
+
+
 #
 # Note, the following font methods are, more or less, duplicated from the
 # Excel::Writer::XLSX::Package::Styles class. I will look at implementing
@@ -5968,8 +6206,6 @@ sub _write_data_validation {
         }
     }
 
-    #use Data::Dumper::Perltidy;
-    #print Dumper $param;
 
     push @attributes, ( 'type' => $param->{validate} );
 
@@ -5983,7 +6219,6 @@ sub _write_data_validation {
         push @attributes, ( 'errorStyle' => 'information' )
           if $param->{error_type} == 2;
     }
-
 
     push @attributes, ( 'allowBlank'       => 1 ) if $param->{ignore_blank};
     push @attributes, ( 'showDropDown'     => 1 ) if !$param->{dropdown};

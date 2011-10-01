@@ -20,15 +20,17 @@ use Exporter;
 use Carp;
 use File::Copy;
 use Excel::Writer::XLSX::Package::App;
+use Excel::Writer::XLSX::Package::Comments;
 use Excel::Writer::XLSX::Package::ContentTypes;
 use Excel::Writer::XLSX::Package::Core;
 use Excel::Writer::XLSX::Package::Relationships;
 use Excel::Writer::XLSX::Package::SharedStrings;
 use Excel::Writer::XLSX::Package::Styles;
 use Excel::Writer::XLSX::Package::Theme;
+use Excel::Writer::XLSX::Package::VML;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 
 ###############################################################################
@@ -92,11 +94,12 @@ sub _add_workbook {
     my $workbook    = shift;
     my @sheet_names = @{ $workbook->{_sheetnames} };
 
-    $self->{_workbook}      = $workbook;
-    $self->{_sheet_names}   = \@sheet_names;
-    $self->{_chart_count}   = scalar @{ $workbook->{_charts} };
-    $self->{_drawing_count} = scalar @{ $workbook->{_drawings} };
-    $self->{_named_ranges}  = $workbook->{_named_ranges};
+    $self->{_workbook}          = $workbook;
+    $self->{_sheet_names}       = \@sheet_names;
+    $self->{_chart_count}       = scalar @{ $workbook->{_charts} };
+    $self->{_drawing_count}     = scalar @{ $workbook->{_drawings} };
+    $self->{_num_comment_files} = $workbook->{_num_comment_files};
+    $self->{_named_ranges}      = $workbook->{_named_ranges};
 
     for my $worksheet ( @{ $self->{_workbook}->{_worksheets} } ) {
         if ( $worksheet->{_is_chartsheet} ) {
@@ -124,6 +127,8 @@ sub _create_package {
     $self->_write_chartsheet_files();
     $self->_write_chart_files();
     $self->_write_drawing_files();
+    $self->_write_vml_files();
+    $self->_write_comment_files();
     $self->_write_shared_strings_file();
     $self->_write_app_file();
     $self->_write_core_file();
@@ -257,7 +262,63 @@ sub _write_drawing_files {
         $drawing->_set_xml_writer(
             $dir . '/xl/drawings/drawing' . $index++ . '.xml' );
         $drawing->_assemble_xml_file();
+    }
+}
 
+
+###############################################################################
+#
+# _write_vml_files()
+#
+# Write the comment VML files.
+#
+sub _write_vml_files {
+
+    my $self = shift;
+    my $dir  = $self->{_package_dir};
+
+    mkdir $dir . '/xl';
+    mkdir $dir . '/xl/drawings';
+
+    my $index   = 1;
+    for my $worksheet ( @{ $self->{_workbook}->{_worksheets} } ) {
+        next unless $worksheet->{_has_comments};
+
+        my $vml = Excel::Writer::XLSX::Package::VML->new();
+
+        $vml->_set_xml_writer(
+            $dir . '/xl/drawings/vmlDrawing' . $index++ . '.vml' );
+        $vml->_assemble_xml_file(
+            $worksheet->{_vml_data_id},
+            $worksheet->{_vml_shape_id},
+            $worksheet->{_comments_array}
+        );
+    }
+}
+
+
+###############################################################################
+#
+# _write_comment_files()
+#
+# Write the comment files.
+#
+sub _write_comment_files {
+
+    my $self = shift;
+    my $dir  = $self->{_package_dir};
+
+    mkdir $dir . '/xl';
+    mkdir $dir . '/xl/drawings';
+
+    my $index = 1;
+    for my $worksheet ( @{ $self->{_workbook}->{_worksheets} } ) {
+        next unless $worksheet->{_has_comments};
+
+        my $comment = Excel::Writer::XLSX::Package::Comments->new();
+
+        $comment->_set_xml_writer( $dir . '/xl/comments' . $index++ . '.xml' );
+        $comment->_assemble_xml_file( $worksheet->{_comments_array} );
     }
 }
 
@@ -393,6 +454,14 @@ sub _write_content_types_file {
 
     for my $i ( 1 .. $self->{_drawing_count} ) {
         $content->_add_drawing_name( 'drawing' . $i );
+    }
+
+    if ( $self->{_num_comment_files} ) {
+        $content->_add_vml_name();
+    }
+
+    for my $i ( 1 .. $self->{_num_comment_files} ) {
+        $content->_add_comment_name( 'comments' . $i );
     }
 
     # Add the sharedString rel if there is string data in the workbook.
@@ -550,8 +619,11 @@ sub _write_worksheet_rels_files {
 
         $index++;
 
-        my @external_links = (@{ $worksheet->{_external_hlinks} },
-          @{ $worksheet->{_external_dlinks} });
+        my @external_links = (
+            @{ $worksheet->{_external_hyper_links} },
+            @{ $worksheet->{_external_drawing_links} },
+            @{ $worksheet->{_external_comment_links} },
+        );
 
         next unless @external_links;
 
@@ -597,7 +669,7 @@ sub _write_chartsheet_rels_files {
 
         $index++;
 
-        my @external_links = @{ $worksheet->{_external_dlinks} };
+        my @external_links = @{ $worksheet->{_external_drawing_links} };
 
         next unless @external_links;
 

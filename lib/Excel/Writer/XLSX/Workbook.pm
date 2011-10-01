@@ -32,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 
 ###############################################################################
@@ -63,7 +63,6 @@ sub new {
     $self->{_fileclosed}       = 0;
     $self->{_filehandle}       = undef;
     $self->{_internal_fh}      = 0;
-    $self->{_biffsize}         = 0;
     $self->{_sheet_name}       = 'Sheet';
     $self->{_chart_name}       = 'Chart';
     $self->{_sheetname_count}  = 0;
@@ -81,14 +80,13 @@ sub new {
     $self->{_custom_colors}    = [];
     $self->{_doc_properties}   = {};
     $self->{_localtime}        = [ localtime() ];
+    $self->{_num_comment_files}= 0;
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
     $self->{_str_unique} = 0;
     $self->{_str_table}  = {};
     $self->{_str_array}  = [];
-
-
 
 
     bless $self, $class;
@@ -443,8 +441,7 @@ sub _check_sheetname {
 #
 # add_format(%properties)
 #
-# Add a new format to the Excel workbook. This adds an XF record and
-# a FONT record. Also, pass any properties to the Format::new().
+# Add a new format to the Excel workbook.
 #
 sub add_format {
 
@@ -741,8 +738,7 @@ sub set_properties {
 #
 # _store_workbook()
 #
-# Assemble worksheets into a workbook and send the BIFF data to an OLE
-# storage.
+# Assemble worksheets into a workbook.
 #
 sub _store_workbook {
 
@@ -768,6 +764,9 @@ sub _store_workbook {
 
     # Convert the SST strings data structure.
     $self->_prepare_sst_string_data();
+
+    # Prepare the worksheet cell comments.
+    $self->_prepare_comments();
 
     # Set the font index for the format objects.
     $self->_prepare_fonts();
@@ -1275,6 +1274,48 @@ sub _prepare_drawings {
     }
 
     $self->{_drawing_count} = $drawing_id;
+}
+
+
+###############################################################################
+#
+# _prepare_comments()
+#
+# Iterate through the worksheets and set up the comment data.
+#
+sub _prepare_comments {
+
+    my $self         = shift;
+    my $comment_id   = 0;
+    my $vml_data_id  = 1;
+    my $vml_shape_id = 1024;
+
+    for my $sheet ( @{ $self->{_worksheets} } ) {
+
+        next unless $sheet->{_has_comments};
+
+        my $count = $sheet->_prepare_comments( $vml_data_id, $vml_shape_id,
+            ++$comment_id );
+
+        # Each VML file should start with a shape id incremented by 1024.
+        $vml_data_id  += 1 * int(    ( 1024 + $count ) / 1024 );
+        $vml_shape_id += 1024 * int( ( 1024 + $count ) / 1024 );
+    }
+
+    $self->{_num_comment_files} = $comment_id;
+
+    # Add a font format for cell comments.
+    if ( $comment_id > 0 ) {
+        my $format = Excel::Writer::XLSX::Format->new(
+            0,
+            font          => 'Tahoma',
+            size          => 8,
+            color_indexed => 81,
+            font_only     => 1,
+        );
+
+        push @{ $self->{_formats} }, $format;
+    }
 }
 
 
