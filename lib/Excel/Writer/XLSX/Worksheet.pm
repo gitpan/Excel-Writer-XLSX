@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.26';
+our $VERSION = '0.27';
 
 
 ###############################################################################
@@ -133,10 +133,12 @@ sub new {
     $self->{_leading_zeros}     = 0;
 
     $self->{_outline_row_level} = 0;
+    $self->{_outline_col_level} = 0;
     $self->{_outline_style}     = 0;
     $self->{_outline_below}     = 1;
     $self->{_outline_right}     = 1;
     $self->{_outline_on}        = 1;
+    $self->{_outline_changed}   = 0;
 
     $self->{_names} = {};
 
@@ -518,6 +520,15 @@ sub set_column {
 
     # Convert the format object.
     $data[3] = _XF( $self, $data[3] );
+
+    # Set the limits for the outline levels (0 <= x <= 7).
+    $data[5] = 0 unless defined $data[5];
+    $data[5] = 0 if $data[5] < 0;
+    $data[5] = 7 if $data[5] > 7;
+
+    if ( $data[5] > $self->{_outline_col_level} ) {
+        $self->{_outline_col_level} = $data[5];
+    }
 
     # Store the column data.
     push @{ $self->{_colinfo} }, [@data];
@@ -2338,8 +2349,7 @@ sub outline_settings {
     $self->{_outline_right} = defined $_[2] ? $_[2] : 1;
     $self->{_outline_style} = $_[3] || 0;
 
-    # Ensure this is a boolean vale for Window2
-    $self->{_outline_on} = 1 if $self->{_outline_on};
+    $self->{_outline_changed} = 1;
 }
 
 
@@ -4236,15 +4246,23 @@ sub _write_sheet_pr {
     my $self       = shift;
     my @attributes = ();
 
-    if ( !$self->{_fit_page} && !$self->{_filter_on} && !$self->{_tab_color} ) {
+    if (   !$self->{_fit_page}
+        && !$self->{_filter_on}
+        && !$self->{_tab_color}
+        && !$self->{_outline_changed} )
+    {
         return;
     }
 
     push @attributes, ( 'filterMode' => 1 ) if $self->{_filter_on};
 
-    if ( $self->{_fit_page} || $self->{_tab_color} ) {
+    if (   $self->{_fit_page}
+        || $self->{_tab_color}
+        || $self->{_outline_changed} )
+    {
         $self->{_writer}->startTag( 'sheetPr', @attributes );
         $self->_write_tab_color();
+        $self->_write_outline_pr();
         $self->_write_page_set_up_pr();
         $self->{_writer}->endTag( 'sheetPr' );
     }
@@ -4406,6 +4424,12 @@ sub _write_sheet_view {
         push @attributes, ( 'tabSelected' => 1 );
     }
 
+
+    # Turn outlines off. Also required in the outlinePr element.
+    if ( !$self->{_outline_on} ) {
+        push @attributes, ( "showOutlineSymbols" => 0 );
+    }
+
     # Set the page view/layout mode if required.
     # TODO. Add pageBreakPreview mode when requested.
     if ( $view ) {
@@ -4482,8 +4506,12 @@ sub _write_sheet_format_pr {
     my $self               = shift;
     my $base_col_width     = 10;
     my $default_row_height = 15;
+    my $row_level      = $self->{_outline_row_level};
+    my $col_level      = $self->{_outline_col_level};
 
     my @attributes = ( 'defaultRowHeight' => $default_row_height );
+    push @attributes, ( 'outlineLevelRow' => $row_level ) if $row_level;
+    push @attributes, ( 'outlineLevelCol' => $col_level ) if $col_level;
 
     $self->{_writer}->emptyTag( 'sheetFormatPr', @attributes );
 }
@@ -4564,9 +4592,11 @@ sub _write_col_info {
         'width' => $width,
     );
 
-    push @attributes, ( style       => $format ) if $format;
-    push @attributes, ( hidden      => 1 )       if $hidden;
-    push @attributes, ( customWidth => 1 )       if $custom_width;
+    push @attributes, ( style          => $format ) if $format;
+    push @attributes, ( hidden         => 1 )       if $hidden;
+    push @attributes, ( customWidth    => 1 )       if $custom_width;
+    push @attributes, ( 'outlineLevel' => $level )  if $level;
+    push @attributes, ( 'collapsed'    => 1 )       if $collapsed;
 
 
     $self->{_writer}->emptyTag( 'col', @attributes );
@@ -4758,6 +4788,8 @@ sub _write_row {
     push @attributes, ( 'ht'           => $height ) if $height != 15;
     push @attributes, ( 'hidden'       => 1 )       if $hidden;
     push @attributes, ( 'customHeight' => 1 )       if $height != 15;
+    push @attributes, ( 'outlineLevel' => $level )  if $level;
+    push @attributes, ( 'collapsed'    => 1 )       if $collapsed;
 
 
     if ( $empty_row ) {
@@ -5905,6 +5937,28 @@ sub _write_tab_color {
     my @attributes = ( 'rgb' => $rgb );
 
     $self->{_writer}->emptyTag( 'tabColor', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_outline_pr()
+#
+# Write the <outlinePr> element.
+#
+sub _write_outline_pr {
+
+    my $self        = shift;
+    my @attributes = ();
+
+    return unless $self->{_outline_changed};
+
+    push @attributes, ( "applyStyles"  => 1 ) if $self->{_outline_style};
+    push @attributes, ( "summaryBelow" => 0 ) if !$self->{_outline_below};
+    push @attributes, ( "summaryRight" => 0 ) if !$self->{_outline_right};
+    push @attributes, ( "showOutlineSymbols" => 0 ) if !$self->{_outline_on};
+
+    $self->{_writer}->emptyTag( 'outlinePr', @attributes );
 }
 
 
