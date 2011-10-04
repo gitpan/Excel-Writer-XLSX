@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.27';
+our $VERSION = '0.28';
 
 
 ###############################################################################
@@ -4887,7 +4887,7 @@ sub _write_cell {
         # Write a formula.
         $self->{_writer}->startTag( 'c', @attributes );
         $self->_write_cell_formula( $token );
-        $self->_write_cell_value( $cell->[3] );
+        $self->_write_cell_value( $cell->[3] // 0 );
         $self->{_writer}->endTag( 'c' );
     }
     elsif ( $type eq 'a' ) {

@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.27';
+our $VERSION = '0.28';
 
 
 ###############################################################################
@@ -4947,6 +4947,13 @@ If you wish to view Excel files on a Windows platform which doesn't have Excel i
 =head1 BUGS
 
 Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. Applying all available Service Packs to Excel should fix this.
+
+When using Excel::Writer::XLSX charts with Perl packagers such as PAR or Cava you should explicitly include the chart that you are trying to create in your C<use> statements. This isn't a bug as such but it might help someone from banging their head off a wall:
+
+    ...
+    use Excel::Writer::XLSX;
+    use Excel::Writer::XLSX::Chart::Column;
+    ...
 
 Formulas are formulae.
 
