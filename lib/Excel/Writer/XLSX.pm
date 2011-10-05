@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.29';
+our $VERSION = '0.30';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.29 of Excel::Writer::XLSX, released October 5, 2011.
+This document refers to version 0.30 of Excel::Writer::XLSX, released October 6, 2011.
 
 
 
@@ -284,6 +284,7 @@ This method is use to create a new chart either as a standalone worksheet (the d
 The properties that can be set are:
 
     type     (required)
+    subtype  (optional)
     name     (optional)
     embedded (optional)
 
@@ -304,6 +305,14 @@ The available types are:
     pie
     scatter
     stock
+
+=item * C<subtype>
+
+Used to define a chart subtype where available.
+
+    my $chart = $workbook->add_chart( type => 'bar', subtype => 'stacked' );
+
+Currently only Bar and Column charts support subtypes (stacked and percent_stacked). See the documentation for those chart types.
 
 =item * C<name>
 
