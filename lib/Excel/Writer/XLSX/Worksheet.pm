@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 
 ###############################################################################
@@ -179,8 +179,9 @@ sub new {
 
     $self->{_rstring} = '';
 
-    $self->{_validations} = [];
-
+    $self->{_validations}  = [];
+    $self->{_cond_formats} = {};
+    $self->{_dxf_priority} = 1;
 
     bless $self, $class;
     return $self;
@@ -236,6 +237,9 @@ sub _assemble_xml_file {
 
     # Write the mergeCells element.
     $self->_write_merge_cells();
+
+    # Write the conditional formats.
+    $self->_write_conditional_formats();
 
     # Write the dataValidations element.
     $self->_write_data_validations();
@@ -517,9 +521,6 @@ sub set_column {
       if $self->_check_dimensions( 0, $data[0], $ignore_row, $ignore_col );
     return -2
       if $self->_check_dimensions( 0, $data[1], $ignore_row, $ignore_col );
-
-    # Convert the format object.
-    $data[3] = _XF( $self, $data[3] );
 
     # Set the limits for the outline levels (0 <= x <= 7).
     $data[5] = 0 unless defined $data[5];
@@ -1975,7 +1976,7 @@ sub write_number {
     my $row  = $_[0];                  # Zero indexed row
     my $col  = $_[1];                  # Zero indexed column
     my $num  = $_[2] + 0;
-    my $xf   = _XF( $self, $_[3] );    # The cell format
+    my $xf   = $_[3];                  # The cell format
     my $type = 'n';                    # The data type
 
     # Check that row and col are valid and store max and min values
@@ -2012,7 +2013,7 @@ sub write_string {
     my $row  = $_[0];                  # Zero indexed row
     my $col  = $_[1];                  # Zero indexed column
     my $str  = $_[2];
-    my $xf   = _XF( $self, $_[3] );    # The cell format
+    my $xf   = $_[3];                  # The cell format
     my $type = 's';                    # The data type
 
     # Check that row and col are valid and store max and min values
@@ -2072,7 +2073,6 @@ sub write_rich_string {
     # If the last arg is a format we use it as the cell format.
     if ( ref $_[-1] ) {
         $xf = pop @_;
-        $xf = _XF( $self, $xf );
     }
 
 
@@ -2202,7 +2202,7 @@ sub write_blank {
 
     my $row  = $_[0];                  # Zero indexed row
     my $col  = $_[1];                  # Zero indexed column
-    my $xf   = _XF( $self, $_[2] );    # The cell format
+    my $xf   = $_[2];                  # The cell format
     my $type = 'b';                    # The data type
 
     # Check that row and col are valid and store max and min values
@@ -2250,8 +2250,6 @@ sub write_formula {
             $xf, $value );
     }
 
-    $xf = _XF( $self, $xf );       # The cell format
-
     # Check that row and col are valid and store max and min values
     return -2 if $self->_check_dimensions( $row, $col );
 
@@ -2296,9 +2294,6 @@ sub write_array_formula {
     my $xf      = $_[5];           # The format object.
     my $value   = $_[6];           # Optional formula value.
     my $type    = 'a';             # The data type
-
-    $xf = _XF( $self, $xf );       # The cell format
-
 
     # Swap last row/col with first row/col as necessary
     ( $row1, $row2 ) = ( $row2, $row1 ) if $row1 > $row2;
@@ -2394,9 +2389,9 @@ sub write_url {
     my $col       = $args[1];                  # Zero indexed column
     my $url       = $args[2];                  # URL string
     my $str       = $args[3];                  # Alternative label
-    my $xf        = _XF( $self, $args[4] );    # Tool tip
-    my $tip       = $args[5];                  # XML data type
-    my $type      = 'l';
+    my $xf        = $args[4];                  # Cell format
+    my $tip       = $args[5];                  # Tool tip
+    my $type      = 'l';                       # XML data type
     my $link_type = 1;
 
 
@@ -2494,7 +2489,7 @@ sub write_date_time {
     my $row  = $_[0];                  # Zero indexed row
     my $col  = $_[1];                  # Zero indexed column
     my $str  = $_[2];
-    my $xf   = _XF( $self, $_[3] );    # The cell format
+    my $xf   = $_[3];                  # The cell format
     my $type = 'n';                    # The data type
 
 
@@ -2683,9 +2678,6 @@ sub set_row {
         $height = 15;
     }
 
-    # Convert the format object.
-    $xf = _XF( $self, $xf );
-
     # Set the limits for the outline levels (0 <= x <= 7).
     $level = 0 if $level < 0;
     $level = 7 if $level > 7;
@@ -2862,7 +2854,7 @@ sub merge_range_type {
 # data_validation($row, $col, {...})
 #
 # This method handles the interface to Excel data validation.
-# Somewhat ironically the this requires a lot of validation code since the
+# Somewhat ironically this requires a lot of validation code since the
 # interface is flexible and covers a several types of data validation.
 #
 # We allow data validation to be called on one cell or a range of cells. The
@@ -3112,6 +3104,215 @@ sub data_validation {
 
 ###############################################################################
 #
+# conditional_formatting($row, $col, {...})
+#
+# This method handles the interface to Excel conditional formatting.
+#
+# We allow the format to be called on one cell or a range of cells. The
+# hashref contains the formatting parameters and must be the last param:
+#    conditional_formatting($row, $col, {...})
+#    conditional_formatting($first_row, $first_col, $last_row, $last_col, {...})
+#
+# Returns  0 : normal termination
+#         -1 : insufficient number of arguments
+#         -2 : row or column out of range
+#         -3 : incorrect parameter.
+#
+sub conditional_formatting {
+
+    my $self = shift;
+
+    # Check for a cell reference in A1 notation and substitute row and column
+    if ( $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    # Check for a valid number of args.
+    if ( @_ != 5 && @_ != 3 ) { return -1 }
+
+    # The final hashref contains the validation parameters.
+    my $param = pop;
+
+    # Make the last row/col the same as the first if not defined.
+    my ( $row1, $col1, $row2, $col2 ) = @_;
+    if ( !defined $row2 ) {
+        $row2 = $row1;
+        $col2 = $col1;
+    }
+
+    # Check that row and col are valid without storing the values.
+    return -2 if $self->_check_dimensions( $row1, $col1, 1, 1 );
+    return -2 if $self->_check_dimensions( $row2, $col2, 1, 1 );
+
+
+    # Check that the last parameter is a hash list.
+    if ( ref $param ne 'HASH' ) {
+        carp "Last parameter '$param' in conditional_formatting() "
+          . "must be a hash ref";
+        return -3;
+    }
+
+    # List of valid input parameters.
+    my %valid_parameter = (
+        type          => 1,
+        format        => 1,
+        criteria      => 1,
+        value         => 1,
+        minimum       => 1,
+        maximum       => 1,
+    );
+
+    # Check for valid input parameters.
+    for my $param_key ( keys %$param ) {
+        if ( not exists $valid_parameter{$param_key} ) {
+            carp "Unknown parameter '$param_key' in conditional_formatting()";
+            return -3;
+        }
+    }
+
+    # 'type' is a required parameter.
+    if ( not exists $param->{type} ) {
+        carp "Parameter 'type' is required in conditional_formatting()";
+        return -3;
+    }
+
+
+    # List of  valid validation types.
+    my %valid_type = (
+        'cell'          => 'cellIs',
+    );
+
+
+    # Check for valid validation types.
+    if ( not exists $valid_type{ lc( $param->{type} ) } ) {
+        carp "Unknown validation type '$param->{type}' for parameter "
+          . "'type' in conditional_formatting()";
+        return -3;
+    }
+    else {
+        $param->{type} = $valid_type{ lc( $param->{type} ) };
+    }
+
+    # 'criteria' is a required parameter.
+    if ( not exists $param->{criteria} ) {
+        carp "Parameter 'criteria' is required in conditional_formatting()";
+        return -3;
+    }
+
+
+    # List of valid criteria types.
+    my %criteria_type = (
+        'between'                  => 'between',
+        'not between'              => 'notBetween',
+        'equal to'                 => 'equal',
+        '='                        => 'equal',
+        '=='                       => 'equal',
+        'not equal to'             => 'notEqual',
+        '!='                       => 'notEqual',
+        '<>'                       => 'notEqual',
+        'greater than'             => 'greaterThan',
+        '>'                        => 'greaterThan',
+        'less than'                => 'lessThan',
+        '<'                        => 'lessThan',
+        'greater than or equal to' => 'greaterThanOrEqual',
+        '>='                       => 'greaterThanOrEqual',
+        'less than or equal to'    => 'lessThanOrEqual',
+        '<='                       => 'lessThanOrEqual',
+    );
+
+    # Check for valid criteria types.
+    if ( not exists $criteria_type{ lc( $param->{criteria} ) } ) {
+        carp "Unknown criteria type '$param->{criteria}' for parameter "
+          . "'criteria' in conditional_formatting()";
+        return -3;
+    }
+    else {
+        $param->{criteria} = $criteria_type{ lc( $param->{criteria} ) };
+    }
+
+
+    # 'Between' and 'Not between' criteria require 2 values.
+    if ( $param->{criteria} eq 'between' || $param->{criteria} eq 'notBetween' )
+    {
+        if ( not exists $param->{minimum} ) {
+            carp "Parameter 'minimum' is required in conditional_formatting() "
+              . "when using 'between' or 'not between' criteria";
+            return -3;
+        }
+        if ( not exists $param->{maximum} ) {
+            carp "Parameter 'maximum' is required in conditional_formatting() "
+              . "when using 'between' or 'not between' criteria";
+            return -3;
+        }
+    }
+    else {
+        $param->{minimum} = undef;
+        $param->{maximum} = undef;
+    }
+
+    # Convert date/times value if required.
+    if ( $param->{type} eq 'date' || $param->{type} eq 'time' ) {
+        if ( $param->{value} =~ /T/ ) {
+            my $date_time = $self->convert_date_time( $param->{value} );
+
+            if ( !defined $date_time ) {
+                carp "Invalid date/time value '$param->{value}' "
+                  . "in conditional_formatting()";
+                return -3;
+            }
+            else {
+                $param->{value} = $date_time;
+            }
+        }
+        if ( defined $param->{maximum} && $param->{maximum} =~ /T/ ) {
+            my $date_time = $self->convert_date_time( $param->{maximum} );
+
+            if ( !defined $date_time ) {
+                carp "Invalid date/time value '$param->{maximum}' "
+                  . "in conditional_formatting()";
+                return -3;
+            }
+            else {
+                $param->{maximum} = $date_time;
+            }
+        }
+    }
+
+    # Set the formatting range.
+    my $range = '';
+
+    # Swap last row/col for first row/col as necessary
+    if ( $row1 > $row2 ) {
+        ( $row1, $row2 ) = ( $row2, $row1 );
+    }
+
+    if ( $col1 > $col2 ) {
+        ( $col1, $col2 ) = ( $col2, $col1 );
+    }
+
+    # If the first and last cell are the same write a single cell.
+    if ( ( $row1 == $row2 ) && ( $col1 == $col2 ) ) {
+        $range = xl_rowcol_to_cell( $row1, $col1 );
+    }
+    else {
+        $range = xl_range( $row1, $row2, $col1, $col2 );
+    }
+
+    # Get the dxf format index.
+    if ( defined $param->{format} && ref $param->{format} ) {
+        $param->{format} = $param->{format}->get_dxf_index();
+    }
+
+    # Set the priority based on the order of adding.
+    $param->{priority} = $self->{_dxf_priority}++;
+
+    # Store the validation information until we close the worksheet.
+    push @{ $self->{_cond_formats}->{$range} }, $param;
+}
+
+
+###############################################################################
+#
 # Internal methods.
 #
 ###############################################################################
@@ -3136,30 +3337,7 @@ sub _get_palette_color {
     # Palette is passed in from the Workbook class.
     my @rgb = @{ $palette->[$index] };
 
-    # TODO Add the alpha part to the RGB.
     return sprintf "FF%02X%02X%02X", @rgb;
-}
-
-
-###############################################################################
-#
-# _XF()
-#
-# Returns an index to the XF record in the workbook.
-#
-# Note: this is a function, not a method.
-#
-sub _XF {
-
-    my $self   = $_[0];
-    my $format = $_[1];
-
-    if ( ref( $format ) ) {
-        return $format->get_xf_index();
-    }
-    else {
-        return 0;
-    }
 }
 
 
@@ -4651,6 +4829,12 @@ sub _write_col_info {
     my $level        = $_[5] // 0;    # Outline level.
     my $collapsed    = $_[6] // 0;    # Outline level.
     my $custom_width = 1;
+    my $xf_index     = 0;
+
+    # Get the format index.
+    if ( ref( $format ) ) {
+        $xf_index =  $format->get_xf_index();
+    }
 
     # Set the Excel default col width.
     if ( !defined $width ) {
@@ -4686,11 +4870,11 @@ sub _write_col_info {
         'width' => $width,
     );
 
-    push @attributes, ( style          => $format ) if $format;
-    push @attributes, ( hidden         => 1 )       if $hidden;
-    push @attributes, ( customWidth    => 1 )       if $custom_width;
-    push @attributes, ( 'outlineLevel' => $level )  if $level;
-    push @attributes, ( 'collapsed'    => 1 )       if $collapsed;
+    push @attributes, ( 'style'        => $xf_index ) if $xf_index;
+    push @attributes, ( 'hidden'       => 1 )         if $hidden;
+    push @attributes, ( 'customWidth'  => 1 )         if $custom_width;
+    push @attributes, ( 'outlineLevel' => $level )    if $level;
+    push @attributes, ( 'collapsed'    => 1 )         if $collapsed;
 
 
     $self->{_writer}->emptyTag( 'col', @attributes );
@@ -4873,17 +5057,23 @@ sub _write_row {
     my $level     = shift // 0;
     my $collapsed = shift // 0;
     my $empty_row = shift // 0;
+    my $xf_index  = 0;
 
     my @attributes = ( 'r' => $r + 1 );
 
-    push @attributes, ( 'spans'        => $spans )  if defined $spans;
-    push @attributes, ( 's'            => $format ) if $format;
-    push @attributes, ( 'customFormat' => 1 )       if $format;
-    push @attributes, ( 'ht'           => $height ) if $height != 15;
-    push @attributes, ( 'hidden'       => 1 )       if $hidden;
-    push @attributes, ( 'customHeight' => 1 )       if $height != 15;
-    push @attributes, ( 'outlineLevel' => $level )  if $level;
-    push @attributes, ( 'collapsed'    => 1 )       if $collapsed;
+    # Get the format index.
+    if ( ref( $format ) ) {
+        $xf_index =  $format->get_xf_index();
+    }
+
+    push @attributes, ( 'spans'        => $spans )    if defined $spans;
+    push @attributes, ( 's'            => $xf_index ) if $xf_index;
+    push @attributes, ( 'customFormat' => 1 )         if $format;
+    push @attributes, ( 'ht'           => $height )   if $height != 15;
+    push @attributes, ( 'hidden'       => 1 )         if $hidden;
+    push @attributes, ( 'customHeight' => 1 )         if $height != 15;
+    push @attributes, ( 'outlineLevel' => $level )    if $level;
+    push @attributes, ( 'collapsed'    => 1 )         if $collapsed;
 
 
     if ( $empty_row ) {
@@ -4928,7 +5118,7 @@ sub _write_empty_row {
 #
 # Where $type:  represents the cell type, such as string, number, formula, etc.
 #       $token: is the actual data for the string, number, formula, etc.
-#       $xf:    is the XF format object index.
+#       $xf:    is the XF format object.
 #       @args:  additional args relevant to the specific data type.
 #
 sub _write_cell {
@@ -4940,22 +5130,27 @@ sub _write_cell {
     my $type  = $cell->[0];
     my $token = $cell->[1];
     my $xf    = $cell->[2];
+    my $xf_index = 0;
 
+    # Get the format index.
+    if ( ref( $xf ) ) {
+         $xf_index = $xf->get_xf_index();
+    }
 
     my $range = xl_rowcol_to_cell( $row, $col );
     my @attributes = ( 'r' => $range );
 
     # Add the cell format index.
-    if ( $xf ) {
-        push @attributes, ( 's' => $xf );
+    if ( $xf_index ) {
+        push @attributes, ( 's' => $xf_index );
     }
     elsif ( $self->{_set_rows}->{$row} && $self->{_set_rows}->{$row}->[1] ) {
         my $row_xf = $self->{_set_rows}->{$row}->[1];
-        push @attributes, ( 's' => $row_xf );
+        push @attributes, ( 's' => $row_xf->get_xf_index() );
     }
     elsif ( $self->{_col_formats}->{$col} ) {
         my $col_xf = $self->{_col_formats}->{$col};
-        push @attributes, ( 's' => $col_xf );
+        push @attributes, ( 's' => $col_xf->get_xf_index() );
     }
 
 
@@ -6437,6 +6632,103 @@ sub _write_formula_2 {
 
     $self->{_writer}->dataElement( 'formula2', $formula );
 }
+
+
+##############################################################################
+#
+# _write_conditional_formats()
+#
+# Write the Worksheet conditional formats.
+#
+sub _write_conditional_formats {
+
+    my $self     = shift;
+    my @ranges   = sort keys %{ $self->{_cond_formats} };
+
+    return unless scalar @ranges;
+
+    for my $range ( @ranges ) {
+        $self->_write_conditional_formatting( $range,
+            $self->{_cond_formats}->{$range} );
+    }
+}
+
+
+##############################################################################
+#
+# _write_conditional_formatting()
+#
+# Write the <conditionalFormatting> element.
+#
+sub _write_conditional_formatting {
+
+    my $self   = shift;
+    my $range  = shift;
+    my $params = shift;
+
+    my @attributes = ( 'sqref' => $range );
+
+    $self->{_writer}->startTag( 'conditionalFormatting', @attributes );
+
+    for my $param ( @$params ) {
+
+        # Write the cfRule element.
+        $self->_write_cf_rule( $param );
+    }
+
+    $self->{_writer}->endTag( 'conditionalFormatting' );
+}
+
+##############################################################################
+#
+# _write_cf_rule()
+#
+# Write the <cfRule> element.
+#
+sub _write_cf_rule {
+
+    my $self     = shift;
+    my $param    = shift;
+
+    my @attributes = ( 'type' => $param->{type} );
+
+    push @attributes, ( 'dxfId' => $param->{format} )
+      if defined $param->{format};
+
+    push @attributes, ( 'priority' => $param->{priority} );
+    push @attributes, ( 'operator' => $param->{criteria} );
+
+    $self->{_writer}->startTag( 'cfRule', @attributes );
+
+    if ( $param->{type} eq 'cellIs' ) {
+        if ( defined $param->{minimum} && defined $param->{maximum} ) {
+            $self->_write_formula( $param->{minimum} );
+            $self->_write_formula( $param->{maximum} );
+        }
+        else {
+            $self->_write_formula( $param->{value} );
+        }
+    }
+
+    $self->{_writer}->endTag( 'cfRule' );
+}
+
+
+##############################################################################
+#
+# _write_formula()
+#
+# Write the <formula> element.
+#
+sub _write_formula {
+
+    my $self = shift;
+    my $data = shift;
+
+    $self->{_writer}->dataElement( 'formula', $data );
+}
+
+
 
 
 

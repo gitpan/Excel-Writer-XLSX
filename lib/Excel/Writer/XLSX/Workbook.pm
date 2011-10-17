@@ -32,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 
 ###############################################################################
@@ -53,34 +53,37 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
 
-    $self->{_filename}         = $_[0] || '';
-    $self->{_tempdir}          = undef;
-    $self->{_1904}             = 0;
-    $self->{_activesheet}      = 0;
-    $self->{_firstsheet}       = 0;
-    $self->{_selected}         = 0;
-    $self->{_xf_index}         = 0;
-    $self->{_fileclosed}       = 0;
-    $self->{_filehandle}       = undef;
-    $self->{_internal_fh}      = 0;
-    $self->{_sheet_name}       = 'Sheet';
-    $self->{_chart_name}       = 'Chart';
-    $self->{_sheetname_count}  = 0;
-    $self->{_chartname_count}  = 0;
-    $self->{_worksheets}       = [];
-    $self->{_charts}           = [];
-    $self->{_drawings}         = [];
-    $self->{_sheetnames}       = [];
-    $self->{_formats}          = [];
-    $self->{_palette}          = [];
-    $self->{_font_count}       = 0;
-    $self->{_num_format_count} = 0;
-    $self->{_defined_names}    = [];
-    $self->{_named_ranges}     = [];
-    $self->{_custom_colors}    = [];
-    $self->{_doc_properties}   = {};
-    $self->{_localtime}        = [ localtime() ];
-    $self->{_num_comment_files}= 0;
+    $self->{_filename}           = $_[0] || '';
+    $self->{_tempdir}            = undef;
+    $self->{_1904}               = 0;
+    $self->{_activesheet}        = 0;
+    $self->{_firstsheet}         = 0;
+    $self->{_selected}           = 0;
+    $self->{_fileclosed}         = 0;
+    $self->{_filehandle}         = undef;
+    $self->{_internal_fh}        = 0;
+    $self->{_sheet_name}         = 'Sheet';
+    $self->{_chart_name}         = 'Chart';
+    $self->{_sheetname_count}    = 0;
+    $self->{_chartname_count}    = 0;
+    $self->{_worksheets}         = [];
+    $self->{_charts}             = [];
+    $self->{_drawings}           = [];
+    $self->{_sheetnames}         = [];
+    $self->{_formats}            = [];
+    $self->{_xf_formats}         = [];
+    $self->{_xf_format_indices}  = {};
+    $self->{_dxf_formats}        = [];
+    $self->{_dxf_format_indices} = {};
+    $self->{_palette}            = [];
+    $self->{_font_count}         = 0;
+    $self->{_num_format_count}   = 0;
+    $self->{_defined_names}      = [];
+    $self->{_named_ranges}       = [];
+    $self->{_custom_colors}      = [];
+    $self->{_doc_properties}     = {};
+    $self->{_localtime}          = [ localtime() ];
+    $self->{_num_comment_files}  = 0;
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
@@ -92,7 +95,7 @@ sub new {
     bless $self, $class;
 
     # Add the default cell format.
-    $self->add_format();
+    $self->add_format( xf_index => 0 );
 
 
     # Check for a filename unless it is an existing filehandle
@@ -136,6 +139,9 @@ sub _assemble_xml_file {
     my $self = shift;
 
     return unless $self->{_writer};
+
+    # Prepare format object for passing to Style.pm.
+    $self->_prepare_format_properties();
 
     $self->_write_xml_declaration;
 
@@ -447,12 +453,14 @@ sub add_format {
 
     my $self = shift;
 
-    my @init_data = ( $self->{_xf_index}, @_, );
-
+    my @init_data = (
+        \$self->{_xf_format_indices},
+        \$self->{_dxf_format_indices},
+        @_
+    );
 
     my $format = Excel::Writer::XLSX::Format->new( @init_data );
 
-    $self->{_xf_index} += 1;
     push @{ $self->{_formats} }, $format;    # Store format reference
 
     return $format;
@@ -768,18 +776,6 @@ sub _store_workbook {
     # Prepare the worksheet cell comments.
     $self->_prepare_comments();
 
-    # Set the font index for the format objects.
-    $self->_prepare_fonts();
-
-    # Set the number format index for the format objects.
-    $self->_prepare_num_formats();
-
-    # Set the border index for the format objects.
-    $self->_prepare_borders();
-
-    # Set the fill index for the format objects.
-    $self->_prepare_fills();
-
     # Set the defined names for the worksheets such as Print Titles.
     $self->_prepare_defined_names();
 
@@ -874,6 +870,78 @@ sub _prepare_sst_string_data {
 }
 
 
+
+###############################################################################
+#
+# _prepare_format_properties()
+#
+# Prepare all of the format properties prior to passing them to Styles.pm.
+#
+sub _prepare_format_properties {
+
+    my $self = shift;
+
+    # Separate format objects into XF and DXF formats.
+    $self->_prepare_formats();
+
+    # Set the font index for the format objects.
+    $self->_prepare_fonts();
+
+    # Set the number format index for the format objects.
+    $self->_prepare_num_formats();
+
+    # Set the border index for the format objects.
+    $self->_prepare_borders();
+
+    # Set the fill index for the format objects.
+    $self->_prepare_fills();
+
+
+}
+
+
+###############################################################################
+#
+# _prepare_formats()
+#
+# Iterate through the XF Format objects and separate them into XF and DXF
+# formats.
+#
+sub _prepare_formats {
+
+    my $self = shift;
+
+    for my $format ( @{ $self->{_formats} } ) {
+        my $xf_index  = $format->{_xf_index};
+        my $dxf_index = $format->{_dxf_index};
+
+        if ( defined $xf_index ) {
+            $self->{_xf_formats}->[$xf_index] = $format;
+        }
+
+        if ( defined $dxf_index ) {
+            $self->{_dxf_formats}->[$dxf_index] = $format;
+        }
+    }
+}
+
+
+###############################################################################
+#
+# _set_default_xf_indices()
+#
+# Set the default index for each format. This is mainly used for testing.
+#
+sub _set_default_xf_indices {
+
+    my $self = shift;
+
+    for my $format ( @{ $self->{_formats} } ) {
+        $format->get_xf_index();
+    }
+}
+
+
 ###############################################################################
 #
 # _prepare_fonts()
@@ -888,7 +956,7 @@ sub _prepare_fonts {
     my %fonts;
     my $index = 0;
 
-    for my $format ( @{ $self->{_formats} } ) {
+    for my $format ( @{ $self->{_xf_formats} } ) {
         my $key = $format->get_font_key();
 
         if ( exists $fonts{$key} ) {
@@ -908,6 +976,21 @@ sub _prepare_fonts {
     }
 
     $self->{_font_count} = $index;
+
+    # For the DXF formats we only need to check if the properties have changed.
+    for my $format ( @{ $self->{_dxf_formats} } ) {
+
+        # The only font properties that can change for a DXF format are: color,
+        # bold, italic, underline and strikethrough.
+        if (   $format->{_color}
+            || $format->{_bold}
+            || $format->{_italic}
+            || $format->{_underline}
+            || $format->{_font_strikeout} )
+        {
+            $format->{_has_dxf_font} = 1;
+        }
+    }
 }
 
 
@@ -928,7 +1011,7 @@ sub _prepare_num_formats {
     my $index            = 164;
     my $num_format_count = 0;
 
-    for my $format ( @{ $self->{_formats} } ) {
+    for my $format ( @{ $self->{_xf_formats} }, @{ $self->{_dxf_formats} } ) {
         my $num_format = $format->{_num_format};
 
         # Check if $num_format is an index to a built-in number format.
@@ -954,7 +1037,11 @@ sub _prepare_num_formats {
             $num_formats{$num_format} = $index;
             $format->{_num_format_index} = $index;
             $index++;
-            $num_format_count++;
+
+            # Only increase font count for XF formats (not for DXF formats).
+            if ($format->{_xf_index}) {
+                $num_format_count++;
+            }
         }
     }
 
@@ -976,7 +1063,7 @@ sub _prepare_borders {
     my %borders;
     my $index = 0;
 
-    for my $format ( @{ $self->{_formats} } ) {
+    for my $format ( @{ $self->{_xf_formats} } ) {
         my $key = $format->get_border_key();
 
         if ( exists $borders{$key} ) {
@@ -996,6 +1083,16 @@ sub _prepare_borders {
     }
 
     $self->{_border_count} = $index;
+
+    # For the DXF formats we only need to check if the properties have changed.
+    for my $format ( @{ $self->{_dxf_formats} } ) {
+        my $key = $format->get_border_key();
+
+        if ($key =~ m/[^0:]/) {
+             $format->{_has_dxf_border} = 1;
+        }
+    }
+
 }
 
 
@@ -1020,7 +1117,7 @@ sub _prepare_fills {
     $fills{'0:0:0'}  = 0;
     $fills{'17:0:0'} = 1;
 
-    for my $format ( @{ $self->{_formats} } ) {
+    for my $format ( @{ $self->{_xf_formats} } ) {
 
         # The following logical statements jointly take care of special cases
         # in relation to cell colours and patterns:
@@ -1066,6 +1163,18 @@ sub _prepare_fills {
     }
 
     $self->{_fill_count} = $index;
+
+
+    # For the DXF formats we only need to check if the properties have changed.
+    for my $format ( @{ $self->{_dxf_formats} } ) {
+
+        if (   $format->{_pattern}
+            || $format->{_bg_color}
+            || $format->{_fg_color} )
+        {
+            $format->{_has_dxf_fill} = 1;
+        }
+    }
 }
 
 
@@ -1307,12 +1416,15 @@ sub _prepare_comments {
     # Add a font format for cell comments.
     if ( $comment_id > 0 ) {
         my $format = Excel::Writer::XLSX::Format->new(
-            0,
+            \$self->{_xf_format_indices},
+            \$self->{_dxf_format_indices},
             font          => 'Tahoma',
             size          => 8,
             color_indexed => 81,
             font_only     => 1,
         );
+
+        $format->get_xf_index();
 
         push @{ $self->{_formats} }, $format;
     }

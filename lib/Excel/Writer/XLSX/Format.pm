@@ -20,7 +20,7 @@ use Carp;
 
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 our $AUTOLOAD;
 
 
@@ -35,12 +35,16 @@ sub new {
     my $class = shift;
 
     my $self = {
-        _xf_index => shift || 0,
+        _xf_format_indices  => shift,
+        _dxf_format_indices => shift,
+        _xf_index           => undef,
+        _dxf_index          => undef,
 
         _num_format       => 0,
         _num_format_index => 0,
         _font_index       => 0,
         _has_font         => 0,
+        _has_dxf_font     => 0,
         _font             => 'Calibri',
         _size             => 11,
         _bold             => 0,
@@ -54,6 +58,8 @@ sub new {
         _font_family      => 2,
         _font_charset     => 0,
         _font_scheme      => 'minor',
+        _font_condense    => 0,
+        _font_extend      => 0,
         _theme            => 0,
         _hyperlink        => 0,
 
@@ -66,16 +72,18 @@ sub new {
         _text_justlast => 0,
         _rotation      => 0,
 
-        _fg_color   => 0x00,
-        _bg_color   => 0x00,
-        _pattern    => 0,
-        _has_fill   => 0,
-        _fill_index => 0,
-        _fill_count => 0,
+        _fg_color     => 0x00,
+        _bg_color     => 0x00,
+        _pattern      => 0,
+        _has_fill     => 0,
+        _has_dxf_fill => 0,
+        _fill_index   => 0,
+        _fill_count   => 0,
 
-        _border_index     => 0,
-        _has_border       => 0,
-        _border_count     => 0,
+        _border_index   => 0,
+        _has_border     => 0,
+        _has_dxf_border => 0,
+        _border_count   => 0,
 
         _bottom       => 0,
         _bottom_color => 0x0,
@@ -230,6 +238,25 @@ sub get_protection_properties {
 
 ###############################################################################
 #
+# get_format_key()
+#
+# Returns a unique hash key for the Format object.
+#
+sub get_format_key {
+
+    my $self = shift;
+
+    my $key = join ':',
+      (
+        $self->get_font_key(), $self->get_border_key,
+        $self->get_fill_key(), $self->{_num_format}
+      );
+
+    return $key;
+}
+
+###############################################################################
+#
 # get_font_key()
 #
 # Returns a unique hash key for a font. Used by Workbook.
@@ -317,7 +344,52 @@ sub get_fill_key {
 sub get_xf_index {
     my $self = shift;
 
-    return $self->{_xf_index};
+    if ( defined $self->{_xf_index} ) {
+        return $self->{_xf_index};
+    }
+    else {
+        my $key  = $self->get_format_key();
+        my $indices_href = ${ $self->{_xf_format_indices} };
+
+        if ( exists $indices_href->{$key} ) {
+            return $indices_href->{$key};
+        }
+        else {
+            my $index = 1 + scalar keys %$indices_href;
+            $indices_href->{$key} = $index;
+            $self->{_xf_index} = $index;
+            return $index;
+        }
+    }
+}
+
+
+###############################################################################
+#
+# get_dxf_index()
+#
+# Returns the index used by Worksheet->_XF()
+#
+sub get_dxf_index {
+    my $self = shift;
+
+    if ( defined $self->{_dxf_index} ) {
+        return $self->{_dxf_index};
+    }
+    else {
+        my $key  = $self->get_format_key();
+        my $indices_href = ${ $self->{_dxf_format_indices} };
+
+        if ( exists $indices_href->{$key} ) {
+            return $indices_href->{$key};
+        }
+        else {
+            my $index = scalar keys %$indices_href;
+            $indices_href->{$key} = $index;
+            $self->{_dxf_index} = $index;
+            return $index;
+        }
+    }
 }
 
 
@@ -352,6 +424,11 @@ sub _get_color {
         white   => 0x09,
         yellow  => 0x0D,
     );
+
+    # Return RGB style colors for processing later.
+    if ( $_[0] =~ m/^#[0-9A-F]{6}$/i ) {
+        return $_[0];
+    }
 
     # Return the default color if undef,
     return 0x00 unless defined $_[0];

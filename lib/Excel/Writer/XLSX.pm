@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.30 of Excel::Writer::XLSX, released October 6, 2011.
+This document refers to version 0.31 of Excel::Writer::XLSX, released October 18, 2011.
 
 
 
@@ -569,6 +569,7 @@ The following methods are available through a new worksheet:
     insert_image()
     insert_chart()
     data_validation()
+    conditional_format()
     get_name()
     activate()
     select()
@@ -844,7 +845,7 @@ See the C<rich_strings.pl> example in the distro for more examples.
 
 =begin html
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/rich_strings.jpg" width="640" height="420" alt="Output from rich_strings.pl" /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/rich_strings.jpg" width="640" height="420" alt="Output from rich_strings.pl" /></center></p>
 
 =end html
 
@@ -1570,6 +1571,26 @@ See also the C<data_validate.pl> program in the examples directory of the distro
 
 
 
+=head2 conditional_format()
+
+The C<conditional_format()> method is used to add formatting to a cell or range of cells based on user defined criteria.
+
+    $worksheet->conditional_formatting( 'A1:J10',
+        {
+            type     => 'cell',
+            format   => $format1,
+            criteria => '>=',
+            value    => 50,
+        }
+    );
+
+This method contains a lot of parameters and is described in detail in a separate section L<CONDITIONAL FORMATTING IN EXCEL>.
+
+See also the C<conditional_format.pl> program in the examples directory of the distro
+
+
+
+
 =head2 get_name()
 
 The C<get_name()> method is used to retrieve the name of a worksheet. For example:
@@ -2071,7 +2092,7 @@ Also, note that a filter condition can only be applied to a column in a range sp
 
 See the C<autofilter.pl> program in the examples directory of the distro for a more detailed example.
 
-B<Note> L<Spreadsheet::WriteExcel> supports Top 10 style filters. These aren't currently support by Excel::Writer::XLSX but may be added later.
+B<Note> L<Spreadsheet::WriteExcel> supports Top 10 style filters. These aren't currently supported by Excel::Writer::XLSX but may be added later.
 
 
 =head2 filter_column_list( $column, @matches )
@@ -3010,7 +3031,7 @@ Using format strings you can define very sophisticated formatting of numbers.
     $format11->set_num_format( '0 "dollar and" .00 "cents"' );
     $worksheet->write( 10, 0, 1.87, $format11 );        # 1 dollar and .87 cents
 
-    # Conditional formatting
+    # Conditional numerical formatting.
     $format12->set_num_format( '[Green]General;[Red]-General;General' );
     $worksheet->write( 11, 0, 123, $format12 );         # > 0 Green
     $worksheet->write( 12, 0, -45, $format12 );         # < 0 Red
@@ -3774,12 +3795,11 @@ A typical use case might be to restrict data in a cell to integer values in a ce
             error_message   => 'Sorry, try again.',
         });
 
-The above example would look like this in Excel: L<http://homepage.eircom.net/~jmcnamara/perl/data_validation.jpg>.
 
 =begin html
 
 <center>
-<img src="http://homepage.eircom.net/~jmcnamara/perl/data_validation.jpg" alt="The output from the above example"/>
+<img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/validation_example.jpg" alt="The output from the above example"/>
 </center>
 
 =end html
@@ -3926,7 +3946,7 @@ The C<criteria> parameter is used to set the criteria by which the data in the c
     'greater than or equal to'  |  '>='
     'less than or equal to'     |  '<='
 
-You can either use Excel's textual description strings, in the first column above, or the more common operator alternatives. The following are equivalent:
+You can either use Excel's textual description strings, in the first column above, or the more common symbolic alternatives. The following are equivalent:
 
     validate => 'integer',
     criteria => 'greater than',
@@ -4162,6 +4182,162 @@ See also the C<data_validate.pl> program in the examples directory of the distro
 
 
 
+=head1 CONDITIONAL FORMATTING IN EXCEL
+
+Conditional formatting is a feature of Excel which allows you to apply a format to a cell or a range of cells based on a certain criteria.
+
+For example the following criteria is used to highlight cells >= 50 in red in the C<conditional_format.pl> example from the distro:
+
+    # Write a conditional format over a range.
+    $worksheet->conditional_formatting( 'B3:K12',
+        {
+            type     => 'cell',
+            format   => $format1,
+            criteria => '>=',
+            value    => 50,
+        }
+    );
+
+=begin html
+
+<center>
+<img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/conditional_example.jpg" alt="The output from the above example"/>
+</center>
+
+=end html
+
+
+
+=head2 conditional_format( $row, $col, { parameter => 'value', ... } )
+
+The C<conditional_format()> method is used to apply formatting  based on used defined criteria to an Excel::Writer::XLSX file.
+
+It can be applied to a single cell or a range of cells. You can pass 3 parameters such as C<($row, $col, {...})> or 5 parameters such as C<($first_row, $first_col, $last_row, $last_col, {...})>. You can also use C<A1> style notation. For example:
+
+    $worksheet->conditional_format( 0, 0,       {...} );
+    $worksheet->conditional_format( 0, 0, 4, 1, {...} );
+
+    # Which are the same as:
+
+    $worksheet->conditional_format( 'A1',       {...} );
+    $worksheet->conditional_format( 'A1:B5',    {...} );
+
+See also the note about L<Cell notation> for more information.
+
+
+The last parameter in C<conditional_format()> must be a hash ref containing the parameters that describe the type and style of the data validation. The allowable parameters are:
+
+    type
+    format
+    criteria
+    value
+    minimum
+    maximum
+
+=head2 type
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<type> parameter is used to set the type of conditional formatting that you wish to apply. It is always required and it has no default value. Allowable values are:
+
+    cell - For cell or range style validation.
+
+Note, other types such as dates, strings, duplicates, top/bottom rules, data bars, color scales and icon sets will be added in time.
+
+=head2 format
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<format> parameter is used to specify the format that will be applied to the cell when the conditional formatting criteria is met. The format is created using the C<add_format()> method in the same way as cell formats:
+
+    $format = $workbook->add_format( bold => 1, italic => 1 );
+
+    $worksheet->conditional_formatting( 'A1',
+        {
+            type     => 'cell',
+            format   => $format,
+            criteria => '>',
+            value    => 5
+        }
+    );
+
+The conditional format follows the same rules as in Excel: it is superimposed over the existing cell format and not all font and border properties can be modified. Font properties that can't be modified are font name, font size, superscript and subscript. The border property that cannot be modified is diagonal borders.
+
+Excel specifies some default formats to be used with conditional formatting. You can replicate them using the following Excel::Writer::XLSX formats:
+
+    # Light red fill with dark red text.
+    my $format1 = $workbook->add_format(
+        bg_color => '#FFC7CE',
+        color    => '#9C0006',
+    );
+
+    # Light yellow fill with dark yellow text.
+    my $format2 = $workbook->add_format(
+        bg_color => '#FFEB9C',
+        color    => '#9C6500',
+    );
+
+    # Green fill with dark green text.
+    my $format3 = $workbook->add_format(
+        bg_color => '#C6EFCE',
+        color    => '#006100',
+    );
+
+
+=head2 criteria
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<criteria> parameter is used to set the criteria by which the cell data will be evaluated. It has no default value. Allowable values are:
+
+    'between'
+    'not between'
+    'equal to'                  |  '=='  |  '='
+    'not equal to'              |  '!='  |  '<>'
+    'greater than'              |  '>'
+    'less than'                 |  '<'
+    'greater than or equal to'  |  '>='
+    'less than or equal to'     |  '<='
+
+You can either use Excel's textual description strings, in the first column above, or the more common symbolic alternatives.
+
+
+=head2 value
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<value> is used along with the C<criteria> parameter to set the rule by which the cell data  will be evaluated.
+
+    type     => 'cell',
+    format   => $format,
+    criteria => '>',
+    value    => 5
+
+The C<value> property can also be a cell reference.
+
+
+=head2 minimum
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<minimum> parameter is used to set the lower limiting value when the C<criteria> is either C<'between'> or C<'not between'>:
+
+    validate => 'integer',
+    criteria => 'between',
+    minimum  => 1,
+    maximum  => 100,
+
+
+=head2 maximum
+
+This parameter is passed in a hash ref to C<conditional_format()>.
+
+The C<maximum> parameter is used to set the upper limiting value when the C<criteria> is either C<'between'> or C<'not between'>. See the previous example.
+
+
+
+
+
 =head1 FORMULAS AND FUNCTIONS IN EXCEL
 
 
@@ -4312,7 +4488,7 @@ The following example shows some of the basic features of Excel::Writer::XLSX.
 
 =begin html
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/a_simple.jpg" width="640" height="420" alt="Output from a_simple.pl" /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/a_simple.jpg" width="640" height="420" alt="Output from a_simple.pl" /></center></p>
 
 =end html
 
@@ -4365,7 +4541,7 @@ The following is a general example which demonstrates some features of working w
 
 =begin html
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/regions.jpg" width="640" height="420" alt="Output from regions.pl" /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/regions.jpg" width="640" height="420" alt="Output from regions.pl" /></center></p>
 
 =end html
 
@@ -4374,75 +4550,82 @@ The following is a general example which demonstrates some features of working w
 
 =head2 Example 3
 
-This example shows how to use a conditional numerical format with colours to indicate if a share price has gone up or down.
+Example of how to add conditional formatting to an Excel::Writer::XLSX file. The example below highlights cells that have a value greater than or equal to 50 in red and cells below that value in green.
+
+    #!/usr/bin/perl
 
     use strict;
+    use warnings;
     use Excel::Writer::XLSX;
 
-    # Create a new workbook and add a worksheet
-    my $workbook  = Excel::Writer::XLSX->new( 'stocks.xlsx' );
+    my $workbook  = Excel::Writer::XLSX->new( 'conditional_format.xlsx' );
     my $worksheet = $workbook->add_worksheet();
 
-    # Set the column width for columns 1, 2, 3 and 4
-    $worksheet->set_column( 0, 3, 15 );
 
+    # This example below highlights cells that have a value greater than or
+    # equal to 50 in red and cells below that value in green.
 
-    # Create a format for the column headings
-    my $header = $workbook->add_format();
-    $header->set_bold();
-    $header->set_size( 12 );
-    $header->set_color( 'blue' );
+    # Light red fill with dark red text.
+    my $format1 = $workbook->add_format(
+        bg_color => '#FFC7CE',
+        color    => '#9C0006',
 
+    );
 
-    # Create a format for the stock price
-    my $f_price = $workbook->add_format();
-    $f_price->set_align( 'left' );
-    $f_price->set_num_format( '$0.00' );
+    # Green fill with dark green text.
+    my $format2 = $workbook->add_format(
+        bg_color => '#C6EFCE',
+        color    => '#006100',
 
+    );
 
-    # Create a format for the stock volume
-    my $f_volume = $workbook->add_format();
-    $f_volume->set_align( 'left' );
-    $f_volume->set_num_format( '#,##0' );
+    # Some sample data to run the conditional formatting against.
+    my $data = [
+        [ 90, 80,  50, 10,  20,  90,  40, 90,  30,  40 ],
+        [ 20, 10,  90, 100, 30,  60,  70, 60,  50,  90 ],
+        [ 10, 50,  60, 50,  20,  50,  80, 30,  40,  60 ],
+        [ 10, 90,  20, 40,  10,  40,  50, 70,  90,  50 ],
+        [ 70, 100, 10, 90,  10,  10,  20, 100, 100, 40 ],
+        [ 20, 60,  10, 100, 30,  10,  20, 60,  100, 10 ],
+        [ 10, 60,  10, 80,  100, 80,  30, 30,  70,  40 ],
+        [ 30, 90,  60, 10,  10,  100, 40, 40,  30,  40 ],
+        [ 80, 90,  10, 20,  20,  50,  80, 20,  60,  90 ],
+        [ 60, 80,  30, 30,  10,  50,  80, 60,  50,  30 ],
+    ];
 
+    my $caption = 'Cells with values >= 50 are in light red. '
+      . 'Values < 50 are in light green';
 
-    # Create a format for the price change. This is an example of a
-    # conditional format. The number is formatted as a percentage. If it is
-    # positive it is formatted in green, if it is negative it is formatted
-    # in red and if it is zero it is formatted as the default font colour
-    # (in this case black). Note: the [Green] format produces an unappealing
-    # lime green. Try [Color 10] instead for a dark green.
-    #
-    my $f_change = $workbook->add_format();
-    $f_change->set_align( 'left' );
-    $f_change->set_num_format( '[Green]0.0%;[Red]-0.0%;0.0%' );
+    # Write the data.
+    $worksheet->write( 'A1', $caption );
+    $worksheet->write_col( 'B3', $data );
 
+    # Write a conditional format over a range.
+    $worksheet->conditional_formatting( 'B3:K12',
+        {
+            type     => 'cell',
+            format   => $format1,
+            criteria => '>=',
+            value    => 50,
+        }
+    );
 
-    # Write out the data
-    $worksheet->write( 0, 0, 'Company', $header );
-    $worksheet->write( 0, 1, 'Price',   $header );
-    $worksheet->write( 0, 2, 'Volume',  $header );
-    $worksheet->write( 0, 3, 'Change',  $header );
-
-    $worksheet->write( 1, 0, 'Damage Inc.' );
-    $worksheet->write( 1, 1, 30.25, $f_price );       # $30.25
-    $worksheet->write( 1, 2, 1234567, $f_volume );    # 1,234,567
-    $worksheet->write( 1, 3, 0.085, $f_change );      # 8.5% in green
-
-    $worksheet->write( 2, 0, 'Dump Corp.' );
-    $worksheet->write( 2, 1, 1.56, $f_price );        # $1.56
-    $worksheet->write( 2, 2, 7564, $f_volume );       # 7,564
-    $worksheet->write( 2, 3, -0.015, $f_change );     # -1.5% in red
-
-    $worksheet->write( 3, 0, 'Rev Ltd.' );
-    $worksheet->write( 3, 1, 0.13, $f_price );    # $0.13
-    $worksheet->write( 3, 2, 321, $f_volume );    # 321
-    $worksheet->write( 3, 3, 0, $f_change );      # 0 in the font color (black)
+    # Write another conditional format over the same range.
+    $worksheet->conditional_formatting( 'B3:K12',
+        {
+            type     => 'cell',
+            format   => $format2,
+            criteria => '<',
+            value    => 50,
+        }
+    );
 
 
 =begin html
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/stocks.jpg" width="640" height="420" alt="Output from stocks.pl" /></center></p>
+
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/conditional_format.jpg" width="640" height="420" alt="Output from conditional_format.pl" /></center></p>
+
 
 =end html
 
@@ -4517,7 +4700,7 @@ The following is a simple example of using functions.
 
 =begin html
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/stats.jpg" width="640" height="420" alt="Output from stats.pl" /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/stats.jpg" width="640" height="420" alt="Output from stats.pl" /></center></p>
 
 =end html
 
@@ -4594,6 +4777,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     colors.pl               A demo of the colour palette and named colours.
     comments1.pl            Add comments to worksheet cells.
     comments2.pl            Add comments with advanced options.
+    conditional_format.pl   Add conditional formats to a range of cells.
     data_validate.pl        An example of data validation and dropdown lists.
     date_time.pl            Write dates and times with write_date_time().
     defined_name.pl         Example of how to create defined names.
@@ -4997,9 +5181,9 @@ The roadmap is as follows:
 
 =over 4
 
-=item * Full API compatibility with Spreadsheet::WriteExcel.
+=item * New separated data/formatting API to allow cells to be formatted after data is added.
 
-=item * Conditional formatting.
+=item * More charting features.
 
 =item * Excel::Reader::XLSX and Excel::Rewriter::XLSX. Hopefully.
 
@@ -5101,26 +5285,25 @@ Either the Perl Artistic Licence L<http://dev.perl.org/licenses/artistic.html> o
 
 John McNamara jmcnamara@cpan.org
 
-    -- The mockery of it, he said gaily. Your absurd name, an ancient Greek.
+    An ancient business
+    A modern piece of glass work
+    Down on the corner that you walk each day in passing
+    The elderly sales clerk won't eye us with suspicion
+    The whole, immortal corporation's given its permission
 
-    He pointed his finger in friendly jest and went over to the parapet,
-    laughing to himself. Stephen Dedalus stepped up, followed him wearily
-    half way and sat down on the edge of the gunrest, watching him still
-    as he propped his mirror on the parapet, dipped the brush in the bowl
-    and lathered cheeks and neck.
+    A little stairway
+    A little bit of carpet
+    A pair of mirrors that
+    Are facing one another
+    Out in both directions
+    A thousand little Julias
+    That come together
+    In the middle of Manhattan
 
-    Buck Mulligan's gay voice went on.
+    You waited since lunch
+    It all comes at once
 
-    -- My name is absurd too: Malachi Mulligan, two dactyls. But it has a
-    Hellenic ring, hasn't it? Tripping and sunny like the buck himself.
-    We must go to Athens. Will you come if I can get the aunt to fork out
-    twenty quid?
-
-    He laid the brush aside and, laughing with delight, cried:
-
-    -- Will he come? The jejune jesuit.
-
-        James Joyce. Ulysses.
+      -- Vampire Weekend
 
 
 
