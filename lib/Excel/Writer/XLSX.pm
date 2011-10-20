@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.31';
+our $VERSION = '0.32';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.31 of Excel::Writer::XLSX, released October 18, 2011.
+This document refers to version 0.32 of Excel::Writer::XLSX, released October 20, 2011.
 
 
 
@@ -1578,9 +1578,9 @@ The C<conditional_format()> method is used to add formatting to a cell or range 
     $worksheet->conditional_formatting( 'A1:J10',
         {
             type     => 'cell',
-            format   => $format1,
             criteria => '>=',
             value    => 50,
+            format   => $format1,
         }
     );
 
@@ -3798,9 +3798,7 @@ A typical use case might be to restrict data in a cell to integer values in a ce
 
 =begin html
 
-<center>
-<img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/validation_example.jpg" alt="The output from the above example"/>
-</center>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/validation_example.jpg" alt="The output from the above example"/></center></p>
 
 =end html
 
@@ -4192,17 +4190,15 @@ For example the following criteria is used to highlight cells >= 50 in red in th
     $worksheet->conditional_formatting( 'B3:K12',
         {
             type     => 'cell',
-            format   => $format1,
             criteria => '>=',
             value    => 50,
+            format   => $format1,
         }
     );
 
 =begin html
 
-<center>
-<img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/conditional_example.jpg" alt="The output from the above example"/>
-</center>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/conditional_example.jpg" alt="The output from the above example"/></center></p>
 
 =end html
 
@@ -4240,9 +4236,22 @@ This parameter is passed in a hash ref to C<conditional_format()>.
 
 The C<type> parameter is used to set the type of conditional formatting that you wish to apply. It is always required and it has no default value. Allowable values are:
 
-    cell - For cell or range style validation.
+    type            sub-properties
 
-Note, other types such as dates, strings, duplicates, top/bottom rules, data bars, color scales and icon sets will be added in time.
+    cell            criteria
+                    value
+                    minimum
+                    maximum
+
+    duplicate       (none)
+
+    unique          (none)
+
+    average         criteria
+
+
+Note, other types such as dates, strings, top/bottom rules, data bars, color scales and icon sets will be added in time.
+
 
 =head2 format
 
@@ -4309,9 +4318,9 @@ This parameter is passed in a hash ref to C<conditional_format()>.
 The C<value> is used along with the C<criteria> parameter to set the rule by which the cell data  will be evaluated.
 
     type     => 'cell',
-    format   => $format,
     criteria => '>',
     value    => 5
+    format   => $format,
 
 The C<value> property can also be a cell reference.
 
@@ -4334,6 +4343,58 @@ This parameter is passed in a hash ref to C<conditional_format()>.
 
 The C<maximum> parameter is used to set the upper limiting value when the C<criteria> is either C<'between'> or C<'not between'>. See the previous example.
 
+
+=head2 Conditional Formatting Examples
+
+Example 1. Highlight cells greater than or equal to an integer value.
+
+    $worksheet->conditional_formatting( 'A1',
+        {
+            type     => 'cell',
+            criteria => 'greater than',
+            value    => 5,
+            format   => $format,
+        }
+    );
+
+Example 2. Highlight cells greater than or equal to a value in a reference cell.
+
+    $worksheet->conditional_formatting( 'A1',
+        {
+            type     => 'cell',
+            criteria => 'greater than',
+            value    => '$B$1',
+            format   => $format,
+        }
+    );
+
+Example 3. Highlight duplicate cells in a range.
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'duplicate',
+            format   => $format,
+        }
+    );
+
+Example 4. Highlight unique cells in a range.
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'unique',
+            format   => $format,
+        }
+    );
+
+Example 5. Highlight above average cells.
+
+$worksheet->conditional_formatting( 'A1:A4',
+    {
+        type     => 'average',
+        criteria => 'above',
+        format   => $format,
+    }
+);
 
 
 
@@ -4889,6 +4950,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
     data_validation()           Yes
+    conditional_format()        Yes. Not in Spreadsheet::WriteExcel.
     get_name()                  Yes
     activate()                  Yes
     select()                    Yes

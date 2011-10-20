@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.31';
+our $VERSION = '0.32';
 
 
 ###############################################################################
@@ -844,7 +844,7 @@ sub _write_xf {
     }
 
     # Add applyFont attribute if XF format uses a font element.
-    if ( $format->{_has_font} && $format->{_font_index} > 0 ) {
+    if ( $format->{_font_index} > 0 ) {
         push @attributes, ( 'applyFont' => 1 );
     }
 
