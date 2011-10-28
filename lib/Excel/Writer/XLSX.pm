@@ -20,7 +20,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.32';
+our $VERSION = '0.33';
 
 
 ###############################################################################
@@ -52,7 +52,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.32 of Excel::Writer::XLSX, released October 20, 2011.
+This document refers to version 0.33 of Excel::Writer::XLSX, released October 28, 2011.
 
 
 
@@ -4221,7 +4221,7 @@ It can be applied to a single cell or a range of cells. You can pass 3 parameter
 See also the note about L<Cell notation> for more information.
 
 
-The last parameter in C<conditional_format()> must be a hash ref containing the parameters that describe the type and style of the data validation. The allowable parameters are:
+The last parameter in C<conditional_format()> must be a hash ref containing the parameters that describe the type and style of the data validation. The main parameters are:
 
     type
     format
@@ -4230,74 +4230,91 @@ The last parameter in C<conditional_format()> must be a hash ref containing the 
     minimum
     maximum
 
+Additional parameters which are used for specific conditional format types are shown in the relevant sections below.
+
 =head2 type
 
 This parameter is passed in a hash ref to C<conditional_format()>.
 
-The C<type> parameter is used to set the type of conditional formatting that you wish to apply. It is always required and it has no default value. Allowable values are:
+The C<type> parameter is used to set the type of conditional formatting that you wish to apply. It is always required and it has no default value. Allowable C<type> values and their associated parameters are:
 
-    type            sub-properties
-
+    Type            Parameters
+    ====            ==========
     cell            criteria
                     value
                     minimum
                     maximum
 
+    date            criteria
+                    value
+                    minimum
+                    maximum
+
+    time_period     criteria
+
+    text            criteria
+                    value
+
+    average         criteria
+
     duplicate       (none)
 
     unique          (none)
 
-    average         criteria
+    top             criteria
+                    value
+
+    bottom          criteria
+                    value
+
+    blanks          (none)
+
+    no_blanks       (none)
+
+    errors          (none)
+
+    no_errors       (none)
+
+    2_color_scale   (none)
+
+    3_color_scale   (none)
+
+    data_bar        (none)
+
+    formula         criteria
 
 
-Note, other types such as dates, strings, top/bottom rules, data bars, color scales and icon sets will be added in time.
+All conditional formatting types have a C<format> paramter, see below. Other types and parameters such as icon sets will be added in time.
 
+=head2 type => 'cell'
 
-=head2 format
-
-This parameter is passed in a hash ref to C<conditional_format()>.
-
-The C<format> parameter is used to specify the format that will be applied to the cell when the conditional formatting criteria is met. The format is created using the C<add_format()> method in the same way as cell formats:
-
-    $format = $workbook->add_format( bold => 1, italic => 1 );
+This is the most common conditional formatting type. It is used when a format is applied to a cell based on a simple criteria. For example:
 
     $worksheet->conditional_formatting( 'A1',
         {
             type     => 'cell',
-            format   => $format,
-            criteria => '>',
-            value    => 5
+            criteria => 'greater than',
+            value    => 5,
+            format   => $red_format,
         }
     );
 
-The conditional format follows the same rules as in Excel: it is superimposed over the existing cell format and not all font and border properties can be modified. Font properties that can't be modified are font name, font size, superscript and subscript. The border property that cannot be modified is diagonal borders.
+Or, using the C<between> criteria:
 
-Excel specifies some default formats to be used with conditional formatting. You can replicate them using the following Excel::Writer::XLSX formats:
-
-    # Light red fill with dark red text.
-    my $format1 = $workbook->add_format(
-        bg_color => '#FFC7CE',
-        color    => '#9C0006',
-    );
-
-    # Light yellow fill with dark yellow text.
-    my $format2 = $workbook->add_format(
-        bg_color => '#FFEB9C',
-        color    => '#9C6500',
-    );
-
-    # Green fill with dark green text.
-    my $format3 = $workbook->add_format(
-        bg_color => '#C6EFCE',
-        color    => '#006100',
+    $worksheet->conditional_formatting( 'C1:C4',
+        {
+            type     => 'cell',
+            criteria => 'between',
+            minimum  => 20,
+            maximum  => 30,
+            format   => $green_format,
+        }
     );
 
 
 =head2 criteria
 
-This parameter is passed in a hash ref to C<conditional_format()>.
-
-The C<criteria> parameter is used to set the criteria by which the cell data will be evaluated. It has no default value. Allowable values are:
+The C<criteria> parameter is used to set the criteria by which the cell data will be evaluated. It has no default value. The most common criteria as applied to C<< { type => 'cell' } >> are:
 
     'between'
     'not between'
@@ -4310,24 +4327,68 @@ The C<criteria> parameter is used to set the criteria by which the cell data wil
 
 You can either use Excel's textual description strings, in the first column above, or the more common symbolic alternatives.
 
+Additional criteria which are specific to other conditional format types are shown in the relevant sections below.
+
 
 =head2 value
 
-This parameter is passed in a hash ref to C<conditional_format()>.
-
-The C<value> is used along with the C<criteria> parameter to set the rule by which the cell data  will be evaluated.
+The C<value> is generally used along with the C<criteria> parameter to set the rule by which the cell data  will be evaluated.
 
     type     => 'cell',
     criteria => '>',
     value    => 5
     format   => $format,
 
-The C<value> property can also be a cell reference.
+The C<value> property can also be an cell reference.
+
+    type     => 'cell',
+    criteria => '>',
+    value    => '$C$1',
+    format   => $format,
+
+
+=head2 format
+
+The C<format> parameter is used to specify the format that will be applied to the cell when the conditional formatting criteria is met. The format is created using the C<add_format()> method in the same way as cell formats:
+
+    $format = $workbook->add_format( bold => 1, italic => 1 );
+
+    $worksheet->conditional_formatting( 'A1',
+        {
+            type     => 'cell',
+            criteria => '>',
+            value    => 5
+            format   => $format,
+        }
+    );
+
+The conditional format follows the same rules as in Excel: it is superimposed over the existing cell format and not all font and border properties can be modified. Font properties that can't be modified are font name, font size, superscript and subscript. The border property that cannot be modified is diagonal borders.
+
+Excel specifies some default formats to be used with conditional formatting. You can replicate them using the following Excel::Writer::XLSX formats:
+
+    # Light red fill with dark red text.
+
+    my $format1 = $workbook->add_format(
+        bg_color => '#FFC7CE',
+        color    => '#9C0006',
+    );
+
+    # Light yellow fill with dark yellow text.
+
+    my $format2 = $workbook->add_format(
+        bg_color => '#FFEB9C',
+        color    => '#9C6500',
+    );
+
+    # Green fill with dark green text.
+
+    my $format3 = $workbook->add_format(
+        bg_color => '#C6EFCE',
+        color    => '#006100',
+    );
 
 
 =head2 minimum
-
-This parameter is passed in a hash ref to C<conditional_format()>.
 
 The C<minimum> parameter is used to set the lower limiting value when the C<criteria> is either C<'between'> or C<'not between'>:
 
@@ -4339,16 +4400,259 @@ The C<minimum> parameter is used to set the lower limiting value when the C<crit
 
 =head2 maximum
 
-This parameter is passed in a hash ref to C<conditional_format()>.
-
 The C<maximum> parameter is used to set the upper limiting value when the C<criteria> is either C<'between'> or C<'not between'>. See the previous example.
+
+
+=head2 type => 'date'
+
+The C<date> type is the same as C<cell> type and uses the same criteria and values. However it allows the C<value>, C<minimum> and C<maximum> properties to be specified in the ISO8601 C<yyyy-mm-ddThh:mm:ss.sss> date format which is detailed in the C<write_date_time()> method.
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'date',
+            criteria => 'greater than',
+            value    => '2011-01-01T',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'time_period'
+
+The C<time_period> type is used to specify Excel's "Dates Occurring" style conditional format.
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'time_period',
+            criteria => 'yesterday',
+            format   => $format,
+        }
+    );
+
+The period is set in the C<criteria> and can have one of the following values:
+
+        criteria => 'yesterday',
+        criteria => 'today',
+        criteria => 'last 7 days',
+        criteria => 'last week',
+        criteria => 'this week',
+        criteria => 'next week',
+        criteria => 'last month',
+        criteria => 'this month',
+        criteria => 'next month'
+
+
+=head2 type => 'text'
+
+The C<text> type is used to specify Excel's "Specific Text" style conditional format. It is used to do simple string matching using the C<criteria> and C<value> parameters:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'text',
+            criteria => 'containing',
+            value    => 'foo',
+            format   => $format,
+        }
+    );
+
+The C<criteria> can have one of the following values:
+
+    criteria => 'containing',
+    criteria => 'not containing',
+    criteria => 'begins with',
+    criteria => 'ends with',
+
+The C<value> parameter should be a string or single character.
+
+
+=head2 type => 'average'
+
+The C<average> type is used to specify Excel's "Average" style conditional format.
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'average',
+            criteria => 'above',
+            format   => $format,
+        }
+    );
+
+The type of average for the conditional format range is specified by the C<criteria>:
+
+    criteria => 'above',
+    criteria => 'below',
+    criteria => 'equal or above',
+    criteria => 'equal or below',
+    criteria => '1 std dev above',
+    criteria => '1 std dev below',
+    criteria => '2 std dev above',
+    criteria => '2 std dev below',
+    criteria => '3 std dev above',
+    criteria => '3 std dev below',
+
+
+
+=head2 type => 'duplicate'
+
+The C<duplicate> type is used to highlight duplicate cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'duplicate',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'unique'
+
+The C<unique> type is used to highlight unique cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'unique',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'top'
+
+The C<top> type is used to specify the top C<n> values by number or percentage in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'top',
+            value    => 10,
+            format   => $format,
+        }
+    );
+
+The C<criteria> can be used to indicate that a percentage condition is required:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'top',
+            value    => 10,
+            criteria => '%',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'bottom'
+
+The C<bottom> type is used to specify the bottom C<n> values by number or percentage in a range.
+
+It takes the same parameters as C<top>, see above.
+
+
+=head2 type => 'blanks'
+
+The C<blanks> type is used to highlight blank cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'blanks',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'no_blanks'
+
+The C<no_blanks> type is used to highlight non blank cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'no_blanks',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'errors'
+
+The C<errors> type is used to highlight error cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'errors',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => 'no_errors'
+
+The C<no_errors> type is used to highlight non error cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'no_errors',
+            format   => $format,
+        }
+    );
+
+
+=head2 type => '2_color_scale'
+
+The C<2_color_scale> type is used to specify Excel's "2 Color Scale" style conditional format.
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type  => '2_color_scale',
+        }
+    );
+
+At the moment only the default colors and properties can be used. These will be extended in time.
+
+
+=head2 type => '3_color_scale'
+
+The C<3_color_scale> type is used to specify Excel's "3 Color Scale" style conditional format.
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type  => '3_color_scale',
+        }
+    );
+
+At the moment only the default colors and properties can be used. These will be extended in time.
+
+=head2 type => 'data_bar'
+
+The C<data_bar> type is used to specify Excel's "Data Bar" style conditional format.
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type  => 'data_bar',
+        }
+    );
+
+At the moment only the default colors and properties can be used. These will be extended in time.
+
+
+=head2 type => 'formula'
+
+The C<formula> type is used to specify a conditional format based on a user defined formula:
+
+$worksheet->conditional_formatting( 'A1:A4',
+    {
+        type     => 'formula',
+        criteria => '=$A$1 > 5',
+        format   => $format,
+    }
+);
+
+The formula is specified in the C<criteria>.
 
 
 =head2 Conditional Formatting Examples
 
 Example 1. Highlight cells greater than or equal to an integer value.
 
-    $worksheet->conditional_formatting( 'A1',
+    $worksheet->conditional_formatting( 'A1:F10',
         {
             type     => 'cell',
             criteria => 'greater than',
@@ -4359,44 +4663,96 @@ Example 1. Highlight cells greater than or equal to an integer value.
 
 Example 2. Highlight cells greater than or equal to a value in a reference cell.
 
-    $worksheet->conditional_formatting( 'A1',
+    $worksheet->conditional_formatting( 'A1:F10',
         {
             type     => 'cell',
             criteria => 'greater than',
-            value    => '$B$1',
+            value    => '$H$1',
             format   => $format,
         }
     );
 
-Example 3. Highlight duplicate cells in a range.
+Example 3. Highlight cells greater than a certain date:
 
-    $worksheet->conditional_formatting( 'A1:A4',
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'date',
+            criteria => 'greater than',
+            value    => '2011-01-01T',
+            format   => $format,
+        }
+    );
+
+Example 4. Highlight cells with a date in the last seven days:
+
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'time_period',
+            criteria => 'last 7 days',
+            format   => $format,
+        }
+    );
+
+Example 5. Highlight cells with strings starting with the letter C<b>:
+
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'text',
+            criteria => 'begins with',
+            value    => 'b',
+            format   => $format,
+        }
+    );
+
+Example 6. Highlight cells that are 1 std deviation above the average for the range:
+
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'average',
+            format   => $format,
+        }
+    );
+
+Example 7. Highlight duplicate cells in a range:
+
+    $worksheet->conditional_formatting( 'A1:F10',
         {
             type     => 'duplicate',
             format   => $format,
         }
     );
 
-Example 4. Highlight unique cells in a range.
+Example 8. Highlight unique cells in a range.
 
-    $worksheet->conditional_formatting( 'A1:A4',
+    $worksheet->conditional_formatting( 'A1:F10',
         {
             type     => 'unique',
             format   => $format,
         }
     );
 
-Example 5. Highlight above average cells.
+Example 9. Highlight the top 10 cells.
 
-$worksheet->conditional_formatting( 'A1:A4',
-    {
-        type     => 'average',
-        criteria => 'above',
-        format   => $format,
-    }
-);
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'top',
+            value    => 10,
+            format   => $format,
+        }
+    );
 
 
+Example 10. Highlight blank cells.
+
+    $worksheet->conditional_formatting( 'A1:F10',
+        {
+            type     => 'blanks',
+            format   => $format,
+        }
+    );
+
+
+See also the C<conditional_format.pl> example program in C<EXAMPLES>.
 
 
 =head1 FORMULAS AND FUNCTIONS IN EXCEL
@@ -4642,16 +4998,16 @@ Example of how to add conditional formatting to an Excel::Writer::XLSX file. The
 
     # Some sample data to run the conditional formatting against.
     my $data = [
-        [ 90, 80,  50, 10,  20,  90,  40, 90,  30,  40 ],
-        [ 20, 10,  90, 100, 30,  60,  70, 60,  50,  90 ],
-        [ 10, 50,  60, 50,  20,  50,  80, 30,  40,  60 ],
-        [ 10, 90,  20, 40,  10,  40,  50, 70,  90,  50 ],
-        [ 70, 100, 10, 90,  10,  10,  20, 100, 100, 40 ],
-        [ 20, 60,  10, 100, 30,  10,  20, 60,  100, 10 ],
-        [ 10, 60,  10, 80,  100, 80,  30, 30,  70,  40 ],
-        [ 30, 90,  60, 10,  10,  100, 40, 40,  30,  40 ],
-        [ 80, 90,  10, 20,  20,  50,  80, 20,  60,  90 ],
-        [ 60, 80,  30, 30,  10,  50,  80, 60,  50,  30 ],
+        [ 34, 72,  38, 30, 75, 48, 75, 66, 84, 86 ],
+        [ 6,  24,  1,  84, 54, 62, 60, 3,  26, 59 ],
+        [ 28, 79,  97, 13, 85, 93, 93, 22, 5,  14 ],
+        [ 27, 71,  40, 17, 18, 79, 90, 93, 29, 47 ],
+        [ 88, 25,  33, 23, 67, 1,  59, 79, 47, 36 ],
+        [ 24, 100, 20, 88, 29, 33, 38, 54, 54, 88 ],
+        [ 6,  57,  88, 28, 10, 26, 37, 7,  41, 48 ],
+        [ 52, 78,  1,  96, 26, 45, 47, 33, 96, 36 ],
+        [ 60, 54,  81, 66, 81, 90, 80, 93, 12, 55 ],
+        [ 70, 5,   46, 14, 71, 19, 66, 36, 41, 21 ],
     ];
 
     my $caption = 'Cells with values >= 50 are in light red. '
@@ -4665,9 +5021,9 @@ Example of how to add conditional formatting to an Excel::Writer::XLSX file. The
     $worksheet->conditional_formatting( 'B3:K12',
         {
             type     => 'cell',
-            format   => $format1,
             criteria => '>=',
             value    => 50,
+            format   => $format1,
         }
     );
 
@@ -4675,9 +5031,9 @@ Example of how to add conditional formatting to an Excel::Writer::XLSX file. The
     $worksheet->conditional_formatting( 'B3:K12',
         {
             type     => 'cell',
-            format   => $format2,
             criteria => '<',
             value    => 50,
+            format   => $format2,
         }
     );
 

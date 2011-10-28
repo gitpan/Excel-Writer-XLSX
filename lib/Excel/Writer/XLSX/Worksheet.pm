@@ -25,7 +25,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.32';
+our $VERSION = '0.33';
 
 
 ###############################################################################
@@ -3154,12 +3154,12 @@ sub conditional_formatting {
 
     # List of valid input parameters.
     my %valid_parameter = (
-        type          => 1,
-        format        => 1,
-        criteria      => 1,
-        value         => 1,
-        minimum       => 1,
-        maximum       => 1,
+        type     => 1,
+        format   => 1,
+        criteria => 1,
+        value    => 1,
+        minimum  => 1,
+        maximum  => 1,
     );
 
     # Check for valid input parameters.
@@ -3180,9 +3180,23 @@ sub conditional_formatting {
     # List of  valid validation types.
     my %valid_type = (
         'cell'          => 'cellIs',
+        'date'          => 'date',
+        'time'          => 'time',
         'average'       => 'aboveAverage',
         'duplicate'     => 'duplicateValues',
         'unique'        => 'uniqueValues',
+        'top'           => 'top10',
+        'bottom'        => 'top10',
+        'text'          => 'text',
+        'time_period'   => 'timePeriod',
+        'blanks'        => 'containsBlanks',
+        'no_blanks'     => 'notContainsBlanks',
+        'errors'        => 'containsErrors',
+        'no_errors'     => 'notContainsErrors',
+        '2_color_scale' => '2_color_scale',
+        '3_color_scale' => '3_color_scale',
+        'data_bar'      => 'dataBar',
+        'formula'       => 'expression',
     );
 
 
@@ -3193,8 +3207,10 @@ sub conditional_formatting {
         return -3;
     }
     else {
+        $param->{direction} = 'bottom' if $param->{type} eq 'bottom';
         $param->{type} = $valid_type{ lc( $param->{type} ) };
     }
+
 
     # List of valid criteria types.
     my %criteria_type = (
@@ -3214,6 +3230,19 @@ sub conditional_formatting {
         '>='                       => 'greaterThanOrEqual',
         'less than or equal to'    => 'lessThanOrEqual',
         '<='                       => 'lessThanOrEqual',
+        'containing'               => 'containsText',
+        'not containing'           => 'notContains',
+        'begins with'              => 'beginsWith',
+        'ends with'                => 'endsWith',
+        'yesterday'                => 'yesterday',
+        'today'                    => 'today',
+        'last 7 days'              => 'last7Days',
+        'last week'                => 'lastWeek',
+        'this week'                => 'thisWeek',
+        'next week'                => 'nextWeek',
+        'last month'               => 'lastMonth',
+        'this month'               => 'thisMonth',
+        'next month'               => 'nextMonth',
     );
 
     # Check for valid criteria types.
@@ -3223,7 +3252,9 @@ sub conditional_formatting {
 
     # Convert date/times value if required.
     if ( $param->{type} eq 'date' || $param->{type} eq 'time' ) {
-        if ( $param->{value} =~ /T/ ) {
+        $param->{type} = 'cellIs';
+
+        if ( defined $param->{value} && $param->{value} =~ /T/ ) {
             my $date_time = $self->convert_date_time( $param->{value} );
 
             if ( !defined $date_time ) {
@@ -3235,6 +3266,20 @@ sub conditional_formatting {
                 $param->{value} = $date_time;
             }
         }
+
+        if ( defined $param->{minimum} && $param->{minimum} =~ /T/ ) {
+            my $date_time = $self->convert_date_time( $param->{minimum} );
+
+            if ( !defined $date_time ) {
+                carp "Invalid date/time value '$param->{minimum}' "
+                  . "in conditional_formatting()";
+                return -3;
+            }
+            else {
+                $param->{minimum} = $date_time;
+            }
+        }
+
         if ( defined $param->{maximum} && $param->{maximum} =~ /T/ ) {
             my $date_time = $self->convert_date_time( $param->{maximum} );
 
@@ -3250,7 +3295,8 @@ sub conditional_formatting {
     }
 
     # Set the formatting range.
-    my $range = '';
+    my $range      = '';
+    my $start_cell = '';    # Use for formulas.
 
     # Swap last row/col for first row/col as necessary
     if ( $row1 > $row2 ) {
@@ -3264,9 +3310,11 @@ sub conditional_formatting {
     # If the first and last cell are the same write a single cell.
     if ( ( $row1 == $row2 ) && ( $col1 == $col2 ) ) {
         $range = xl_rowcol_to_cell( $row1, $col1 );
+        $start_cell = $range;
     }
     else {
         $range = xl_range( $row1, $row2, $col1, $col2 );
+        $start_cell = xl_rowcol_to_cell( $row1, $col1 );
     }
 
     # Get the dxf format index.
@@ -3276,6 +3324,176 @@ sub conditional_formatting {
 
     # Set the priority based on the order of adding.
     $param->{priority} = $self->{_dxf_priority}++;
+
+    # Special handling of text criteria.
+    if ( $param->{type} eq 'text' ) {
+
+        if ( $param->{criteria} eq 'containsText' ) {
+            $param->{type}     = 'containsText';
+            $param->{formula}  = sprintf 'NOT(ISERROR(SEARCH("%s",%s)))',
+              $param->{value}, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'notContains' ) {
+            $param->{type}     = 'notContainsText';
+            $param->{formula}  = sprintf 'ISERROR(SEARCH("%s",%s))',
+              $param->{value}, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'beginsWith' ) {
+            $param->{type}     = 'beginsWith';
+            $param->{formula}  = sprintf 'LEFT(%s,1)="%s"',
+              $start_cell, $param->{value};
+        }
+        elsif ( $param->{criteria} eq 'endsWith' ) {
+            $param->{type}     = 'endsWith';
+            $param->{formula}  = sprintf 'RIGHT(%s,1)="%s"',
+              $start_cell, $param->{value};
+        }
+        else {
+            carp "Invalid text criteria '$param->{criteria}' "
+              . "in conditional_formatting()";
+        }
+    }
+
+    # Special handling of time time_period criteria.
+    if ( $param->{type} eq 'timePeriod' ) {
+
+        if ( $param->{criteria} eq 'yesterday' ) {
+            $param->{formula} = sprintf 'FLOOR(%s,1)=TODAY()-1', $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'today' ) {
+            $param->{formula} = sprintf 'FLOOR(%s,1)=TODAY()', $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'tomorrow' ) {
+            $param->{formula} = sprintf 'FLOOR(%s,1)=TODAY()+1', $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'last7Days' ) {
+            $param->{formula} =
+              sprintf 'AND(TODAY()-FLOOR(%s,1)<=6,FLOOR(%s,1)<=TODAY())',
+              $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'lastWeek' ) {
+            $param->{formula} =
+              sprintf 'AND(TODAY()-ROUNDDOWN(%s,0)>=(WEEKDAY(TODAY())),'
+              . 'TODAY()-ROUNDDOWN(%s,0)<(WEEKDAY(TODAY())+7))',
+              $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'thisWeek' ) {
+            $param->{formula} =
+              sprintf 'AND(TODAY()-ROUNDDOWN(%s,0)<=WEEKDAY(TODAY())-1,'
+              . 'ROUNDDOWN(%s,0)-TODAY()<=7-WEEKDAY(TODAY()))',
+              $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'nextWeek' ) {
+            $param->{formula} =
+              sprintf 'AND(ROUNDDOWN(%s,0)-TODAY()>(7-WEEKDAY(TODAY())),'
+              . 'ROUNDDOWN(%s,0)-TODAY()<(15-WEEKDAY(TODAY())))',
+              $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'lastMonth' ) {
+            $param->{formula} =
+              sprintf
+              'AND(MONTH(%s)=MONTH(TODAY())-1,OR(YEAR(%s)=YEAR(TODAY()),'
+              . 'AND(MONTH(%s)=1,YEAR(A1)=YEAR(TODAY())-1)))',
+              $start_cell, $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'thisMonth' ) {
+            $param->{formula} =
+              sprintf 'AND(MONTH(%s)=MONTH(TODAY()),YEAR(%s)=YEAR(TODAY()))',
+              $start_cell, $start_cell, $start_cell;
+        }
+        elsif ( $param->{criteria} eq 'nextMonth' ) {
+            $param->{formula} =
+              sprintf
+              'AND(MONTH(%s)=MONTH(TODAY())+1,OR(YEAR(%s)=YEAR(TODAY()),'
+              . 'AND(MONTH(%s)=12,YEAR(%s)=YEAR(TODAY())+1)))',
+              $start_cell, $start_cell, $start_cell, $start_cell;
+        }
+        else {
+            carp "Invalid time_period criteria '$param->{criteria}' "
+              . "in conditional_formatting()";
+        }
+    }
+
+
+    # Special handling of blanks/error types.
+    if ( $param->{type} eq 'containsBlanks' ) {
+        $param->{formula} = sprintf 'LEN(TRIM(%s))=0', $start_cell;
+    }
+
+    if ( $param->{type} eq 'notContainsBlanks' ) {
+        $param->{formula} = sprintf 'LEN(TRIM(%s))>0', $start_cell;
+    }
+
+    if ( $param->{type} eq 'containsErrors' ) {
+        $param->{formula} = sprintf 'ISERROR(%s)', $start_cell;
+    }
+
+    if ( $param->{type} eq 'notContainsErrors' ) {
+        $param->{formula} = sprintf 'NOT(ISERROR(%s))', $start_cell;
+    }
+
+
+    # Special handling for 2 color scale.
+    if ( $param->{type} eq '2_color_scale' ) {
+        $param->{type} = 'colorScale';
+
+        # Color scales don't use any additional formatting.
+        $param->{format} = undef;
+
+        # Turn off 3 color parameters.
+        $param->{mid_type}  = undef;
+        $param->{mid_color} = undef;
+
+        $param->{min_type}  //= 'min';
+        $param->{max_type}  //= 'max';
+        $param->{min_value} //= 0;
+        $param->{max_value} //= 0;
+        $param->{min_color} //= '#FF7128';
+        $param->{max_color} //= '#FFEF9C';
+
+        $param->{max_color} = $self->_get_palette_color( $param->{max_color} );
+        $param->{min_color} = $self->_get_palette_color( $param->{min_color} );
+    }
+
+
+    # Special handling for 3 color scale.
+    if ( $param->{type} eq '3_color_scale' ) {
+        $param->{type} = 'colorScale';
+
+        # Color scales don't use any additional formatting.
+        $param->{format} = undef;
+
+        $param->{min_type}  //= 'min';
+        $param->{mid_type}  //= 'percentile';
+        $param->{max_type}  //= 'max';
+        $param->{min_value} //= 0;
+        $param->{mid_value} //= 50;
+        $param->{max_value} //= 0;
+        $param->{min_color} //= '#F8696B';
+        $param->{mid_color} //= '#FFEB84';
+        $param->{max_color} //= '#63BE7B';
+
+        $param->{max_color} = $self->_get_palette_color( $param->{max_color} );
+        $param->{mid_color} = $self->_get_palette_color( $param->{mid_color} );
+        $param->{min_color} = $self->_get_palette_color( $param->{min_color} );
+    }
+
+
+    # Special handling for data bar.
+    if ( $param->{type} eq 'dataBar' ) {
+
+        # Color scales don't use any additional formatting.
+        $param->{format} = undef;
+
+        $param->{min_type}  //= 'min';
+        $param->{max_type}  //= 'max';
+        $param->{min_value} //= 0;
+        $param->{max_value} //= 0;
+        $param->{bar_color} //= '#638EC6';
+
+        $param->{bar_color} = $self->_get_palette_color( $param->{bar_color} );
+    }
+
 
     # Store the validation information until we close the worksheet.
     push @{ $self->{_cond_formats}->{$range} }, $param;
@@ -3301,6 +3519,11 @@ sub _get_palette_color {
     my $self    = shift;
     my $index   = shift;
     my $palette = $self->{_palette};
+
+    # Handle colours in #XXXXXX RGB format.
+    if ( $index =~ m/^#([0-9A-F]{6})$/i ) {
+        return "FF" . uc( $1 );
+    }
 
     # Adjust the colour index.
     $index -= 8;
@@ -6359,15 +6582,15 @@ sub _write_font {
     $self->{_rstring}->emptyTag( 'sz', 'val', $format->{_size} );
 
     if ( my $theme = $format->{_theme} ) {
-        $self->_write_color( 'theme' => $theme );
+        $self->_write_rstring_color( 'theme' => $theme );
     }
     elsif ( my $color = $format->{_color} ) {
         $color = $self->_get_palette_color( $color );
 
-        $self->_write_color( 'rgb' => $color );
+        $self->_write_rstring_color( 'rgb' => $color );
     }
     else {
-        $self->_write_color( 'theme' => 1 );
+        $self->_write_rstring_color( 'theme' => 1 );
     }
 
     $self->{_rstring}->emptyTag( 'rFont',  'val', $format->{_font} );
@@ -6431,11 +6654,11 @@ sub _write_vert_align {
 
 ##############################################################################
 #
-# _write_color()
+# _write_rstring_color()
 #
 # Write the <color> element.
 #
-sub _write_color {
+sub _write_rstring_color {
 
     my $self  = shift;
     my $name  = shift;
@@ -6698,13 +6921,72 @@ sub _write_cf_rule {
 
         $self->{_writer}->emptyTag( 'cfRule', @attributes );
     }
-    elsif ($param->{type} eq 'duplicateValues'
-        || $param->{type} eq 'uniqueValues' )
-    {
+    elsif ( $param->{type} eq 'top10' ) {
+        if ( defined $param->{criteria} && $param->{criteria} eq '%' ) {
+            push @attributes, ( 'percent' => 1 );
+        }
+
+        if ( $param->{direction} ) {
+            push @attributes, ( 'bottom' => 1 );
+        }
+
+        my $rank = $param->{value} || 10;
+        push @attributes, ( 'rank' => $rank );
+
         $self->{_writer}->emptyTag( 'cfRule', @attributes );
     }
+    elsif ( $param->{type} eq 'duplicateValues' ) {
+        $self->{_writer}->emptyTag( 'cfRule', @attributes );
+    }
+    elsif ( $param->{type} eq 'uniqueValues' ) {
+        $self->{_writer}->emptyTag( 'cfRule', @attributes );
+    }
+    elsif ($param->{type} eq 'containsText'
+        || $param->{type} eq 'notContainsText'
+        || $param->{type} eq 'beginsWith'
+        || $param->{type} eq 'endsWith' )
+    {
+        push @attributes, ( 'operator' => $param->{criteria} );
+        push @attributes, ( 'text'     => $param->{value} );
 
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_formula( $param->{formula} );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
+    elsif ( $param->{type} eq 'timePeriod' ) {
+        push @attributes, ( 'timePeriod' => $param->{criteria} );
 
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_formula( $param->{formula} );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
+    elsif ($param->{type} eq 'containsBlanks'
+        || $param->{type} eq 'notContainsBlanks'
+        || $param->{type} eq 'containsErrors'
+        || $param->{type} eq 'notContainsErrors' )
+    {
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_formula( $param->{formula} );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
+    elsif ( $param->{type} eq 'colorScale' ) {
+
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_color_scale( $param );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
+    elsif ( $param->{type} eq 'dataBar' ) {
+
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_data_bar( $param );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
+    elsif ( $param->{type} eq 'expression' ) {
+
+        $self->{_writer}->startTag( 'cfRule', @attributes );
+        $self->_write_formula( $param->{criteria} );
+        $self->{_writer}->endTag( 'cfRule' );
+    }
 }
 
 
@@ -6719,11 +7001,106 @@ sub _write_formula {
     my $self = shift;
     my $data = shift;
 
+    # Remove equality from formula.
+    $data =~ s/^=//;
+
     $self->{_writer}->dataElement( 'formula', $data );
 }
 
 
+##############################################################################
+#
+# _write_color_scale()
+#
+# Write the <colorScale> element.
+#
+sub _write_color_scale {
 
+    my $self  = shift;
+    my $param = shift;
+
+    $self->{_writer}->startTag( 'colorScale' );
+
+    $self->_write_cfvo( $param->{min_type}, $param->{min_value} );
+
+    if ( defined $param->{mid_type} ) {
+        $self->_write_cfvo( $param->{mid_type}, $param->{mid_value} );
+    }
+
+    $self->_write_cfvo( $param->{max_type}, $param->{max_value} );
+
+    $self->_write_color( 'rgb' => $param->{min_color} );
+
+    if ( defined $param->{mid_color} ) {
+        $self->_write_color( 'rgb' => $param->{mid_color} );
+    }
+
+    $self->_write_color( 'rgb' => $param->{max_color} );
+
+    $self->{_writer}->endTag( 'colorScale' );
+}
+
+
+##############################################################################
+#
+# _write_data_bar()
+#
+# Write the <dataBar> element.
+#
+sub _write_data_bar {
+
+    my $self  = shift;
+    my $param = shift;
+
+    $self->{_writer}->startTag( 'dataBar' );
+
+    $self->_write_cfvo( $param->{min_type}, $param->{min_value} );
+    $self->_write_cfvo( $param->{max_type}, $param->{max_value} );
+
+    $self->_write_color( 'rgb' => $param->{bar_color} );
+
+    $self->{_writer}->endTag( 'dataBar' );
+}
+
+
+##############################################################################
+#
+# _write_cfvo()
+#
+# Write the <cfvo> element.
+#
+sub _write_cfvo {
+
+    my $self = shift;
+    my $type = shift;
+    my $val  = shift;
+
+    my @attributes = (
+        'type' => $type,
+        'val'  => $val
+    );
+
+    $self->{_writer}->emptyTag( 'cfvo', @attributes );
+}
+
+
+
+##############################################################################
+#
+# _write_color()
+#
+# Write the <color> element.
+#
+sub _write_color {
+
+    my $self  = shift;
+    my $name  = shift;
+    my $value = shift;
+
+    my @attributes = ( $name => $value );
+
+    $self->{_writer}->emptyTag( 'color', @attributes );
+}
 
 
 1;
