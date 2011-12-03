@@ -15,14 +15,14 @@ package Excel::Writer::XLSX::Chart::Stock;
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.37';
+our $VERSION = '0.38';
 
 
 ###############################################################################

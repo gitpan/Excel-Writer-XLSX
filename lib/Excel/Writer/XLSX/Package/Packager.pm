@@ -13,7 +13,7 @@ package Excel::Writer::XLSX::Package::Packager;
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Exporter;
@@ -30,7 +30,7 @@ use Excel::Writer::XLSX::Package::Theme;
 use Excel::Writer::XLSX::Package::VML;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.37';
+our $VERSION = '0.38';
 
 
 ###############################################################################

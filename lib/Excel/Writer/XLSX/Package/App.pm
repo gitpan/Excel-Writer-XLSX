@@ -13,14 +13,14 @@ package Excel::Writer::XLSX::Package::App;
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.37';
+our $VERSION = '0.38';
 
 
 ###############################################################################
@@ -316,7 +316,7 @@ sub _write_vt_data {
 sub _write_company {
 
     my $self = shift;
-    my $data = $self->{_properties}->{company} // '';
+    my $data = $self->{_properties}->{company} || '';
 
     $self->{_writer}->dataElement( 'Company', $data );
 }

@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 use strict;
 use warnings;
 
-require 5.010;
+require 5.008002;
 
 my %deps = (
     'Archive::Zip' => 1.30,
@@ -25,7 +25,6 @@ my %params = (
     'VERSION_FROM'  => 'lib/Excel/Writer/XLSX.pm',
     'NEEDS_LINKING' => 0,
     'dist'          => { COMPRESS => 'gzip --best', SUFFIX => 'gz' },
-    'LICENSE'       => 'perl',
     'PREREQ_PM'     => \%deps,
     'test'          => { TESTS => 't/*/*.t t/*/*/*.t' }
 
@@ -34,6 +33,11 @@ my %params = (
 if ( $ExtUtils::MakeMaker::VERSION ge '6.46' ) {
     $params{META_MERGE} = { resources => \%resources };
 }
+
+if ( $ExtUtils::MakeMaker::VERSION ge '6.30_01' ) {
+    $params{LICENSE} = 'perl';
+}
+
 
 WriteMakefile(%params);
 

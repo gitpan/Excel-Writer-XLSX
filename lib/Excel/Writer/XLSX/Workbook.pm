@@ -14,7 +14,7 @@ package Excel::Writer::XLSX::Workbook;
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
@@ -32,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.37';
+our $VERSION = '0.38';
 
 
 ###############################################################################
@@ -326,7 +326,7 @@ sub add_chart {
     }
 
     # Ensure that the chart defaults to non embedded.
-    my $embedded = $arg{embedded} // 0;
+    my $embedded = $arg{embedded} || 0;
 
     # Check the worksheet name for non-embedded charts.
     if ( !$embedded ) {
@@ -400,8 +400,8 @@ sub add_chart {
 sub _check_sheetname {
 
     my $self         = shift;
-    my $name         = shift // "";
-    my $chart        = shift // 0;
+    my $name         = shift || "";
+    my $chart        = shift || 0;
     my $invalid_char = qr([\[\]:*?/\\]);
 
     # Increment the Sheet/Chart number used for default sheet names below.
@@ -1859,7 +1859,7 @@ sub _get_sheet_index {
 sub set_optimization {
 
     my $self = shift;
-    my $level = shift // 1;
+    my $level = defined $_[0] ? $_[0] : 1;
 
    croak "set_optimization() must be called before add_worksheet()"
           if $self->sheets();

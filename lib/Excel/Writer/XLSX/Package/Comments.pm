@@ -13,7 +13,7 @@ package Excel::Writer::XLSX::Package::Comments;
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
@@ -22,7 +22,7 @@ use Excel::Writer::XLSX::Utility qw(xl_rowcol_to_cell);
 
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.37';
+our $VERSION = '0.38';
 
 
 ###############################################################################
