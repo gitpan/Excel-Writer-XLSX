@@ -32,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.39';
+our $VERSION = '0.40';
 
 
 ###############################################################################
@@ -843,6 +843,7 @@ sub _store_workbook {
         seek $tmp_fh, 0, 0;
 
         while ( read( $tmp_fh, $buffer, 4_096 ) ) {
+            local $\ = undef;    # Protect print from -l on commandline.
             print {$self->{_filehandle}} $buffer;
         }
     }

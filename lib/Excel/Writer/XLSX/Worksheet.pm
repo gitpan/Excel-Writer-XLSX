@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.39';
+our $VERSION = '0.40';
 
 
 ###############################################################################
@@ -5260,6 +5260,7 @@ sub _write_optimized_sheet_data {
         seek $cell_fh, 0, 0;
 
         while ( read( $cell_fh, $buffer, 4_096 ) ) {
+            local $\ = undef;    # Protect print from -l on commandline.
             print $xlsx_fh $buffer;
         }
 
@@ -5600,6 +5601,8 @@ sub _write_cell {
             # Write any rich strings without further tags.
             if ( $token =~ m{^<r>} && $token =~ m{</r>$} ) {
                 my $fh = $self->{_writer}->getOutput();
+
+                local $\ = undef;    # Protect print from -l on commandline.
                 print $fh $token;
             }
             else {

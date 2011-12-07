@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.39';
+our $VERSION = '0.40';
 
 
 ###############################################################################
@@ -198,6 +198,8 @@ sub _write_si {
     # Write any rich strings without further tags.
     if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
         my $fh = $self->{_writer}->getOutput();
+
+        local $\ = undef; # Protect print from -l on commandline.
         print $fh $string;
     }
     else {
