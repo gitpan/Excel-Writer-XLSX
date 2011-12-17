@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 
 ###############################################################################
@@ -5344,6 +5344,9 @@ sub _write_single_row {
     my $current_row = shift || 0;
     my $row_num     = $self->{_previous_row};
 
+    # Set the new previous row as the current row.
+    $self->{_previous_row} = $current_row;
+
     # Skip row if it doesn't contain row formatting, cell data or a comment.
     if (   !$self->{_set_rows}->{$row_num}
         && !$self->{_table}->[$row_num]
@@ -5381,8 +5384,6 @@ sub _write_single_row {
     # Reset table.
     $self->{_table} = [];
 
-    # Set the new previous row as the current row.
-    $self->{_previous_row} = $current_row;
 }
 
 
@@ -5606,7 +5607,13 @@ sub _write_cell {
                 print $fh $token;
             }
             else {
-                $self->{_writer}->dataElement( 't', $token);
+                my @t_attributes;
+
+                # Add attribute to preserve leading or trailing whitespace.
+                if ( $token =~ /^\s/ || $token =~ /\s$/ ) {
+                    push @t_attributes, ( 'xml:space' => 'preserve' );
+                }
+                $self->{_writer}->dataElement( 't', $token, @t_attributes );
             }
 
             $self->{_writer}->endTag( 'is' );
