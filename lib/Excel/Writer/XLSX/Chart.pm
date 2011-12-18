@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.42';
+our $VERSION = '0.43';
 
 
 ###############################################################################
@@ -195,21 +195,26 @@ sub add_series {
     # Set the labels properties for the series.
     my $labels = $self->_get_labels_properties( $arg{data_labels} );
 
+    # Set the "invert if negative" fill property.
+    my $invert_if_neg = $arg{invert_if_negative};
+
     # Add the user supplied data to the internal structures.
     %arg = (
-        _values       => $values,
-        _categories   => $categories,
-        _name         => $name,
-        _name_formula => $name_formula,
-        _name_id      => $name_id,
-        _val_data_id  => $val_id,
-        _cat_data_id  => $cat_id,
-        _line         => $line,
-        _fill         => $fill,
-        _marker       => $marker,
-        _trendline    => $trendline,
-        _labels       => $labels,
+        _values        => $values,
+        _categories    => $categories,
+        _name          => $name,
+        _name_formula  => $name_formula,
+        _name_id       => $name_id,
+        _val_data_id   => $val_id,
+        _cat_data_id   => $cat_id,
+        _line          => $line,
+        _fill          => $fill,
+        _marker        => $marker,
+        _trendline     => $trendline,
+        _labels        => $labels,
+        _invert_if_neg => $invert_if_neg,
     );
+
 
     push @{ $self->{_series} }, \%arg;
 }
@@ -469,6 +474,7 @@ sub _convert_axis_args {
         _log_base        => $arg{log_base},
         _crossing        => $arg{crossing},
         _position        => $arg{position},
+        _label_position  => $arg{label_position},
     };
 
     # Only use the first letter of bottom, top, left or right.
@@ -1269,6 +1275,9 @@ sub _write_ser {
     # Write the c:marker element.
     $self->_write_marker( $series->{_marker} );
 
+    # Write the c:invertIfNegative element.
+    $self->_write_c_invert_if_negative( $series->{_invert_if_neg} );
+
     # Write the c:dLbls element.
     $self->_write_d_lbls( $series->{_labels} );
 
@@ -1561,7 +1570,7 @@ sub _write_cat_axis {
     $self->_write_num_fmt();
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}->[1] );
@@ -1638,7 +1647,7 @@ sub _write_val_axis {
     $self->_write_number_format();
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $y_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}->[0] );
@@ -1714,7 +1723,7 @@ sub _write_cat_val_axis {
     $self->_write_number_format();
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}->[1] );
@@ -1784,7 +1793,7 @@ sub _write_date_axis {
     $self->_write_num_fmt( 'dd/mm/yyyy' );
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}->[1] );
@@ -1992,7 +2001,11 @@ sub _write_num_fmt {
 sub _write_tick_label_pos {
 
     my $self = shift;
-    my $val  = shift;
+    my $val  = shift || 'nextTo';
+
+    if ($val eq 'next_to') {
+        $val =  'nextTo';
+    }
 
     my @attributes = ( 'val' => $val );
 
@@ -3480,6 +3493,26 @@ sub _write_delete {
 }
 
 
+##############################################################################
+#
+# _write_c_invert_if_negative()
+#
+# Write the <c:invertIfNegative> element.
+#
+sub _write_c_invert_if_negative {
+
+    my $self   = shift;
+    my $invert = shift;
+    my $val    = 1;
+
+    return unless $invert;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:invertIfNegative', @attributes );
+}
+
+
 1;
 
 __END__
@@ -3626,6 +3659,10 @@ Set the properties of the series trendline such as linear, polynomial and moving
 
 Set data labels for the series. See the L</CHART FORMATTING> section below.
 
+=item * C<invert_if_negative>
+
+Invert the fill colour for negative values. Usually only applicable to column and bar charts.
+
 =back
 
 The C<categories> and C<values> can take either a range formula such as C<=Sheet1!$A$2:$A$7> or, more usefully when generating the range programmatically, an array ref with zero indexed row/column values:
@@ -3671,6 +3708,7 @@ The properties that can be set are:
     crossing
     reverse
     log_base
+    label_position
 
 These are explained below. Some properties are only applicable to value or category axes, as indicated. See L<Value and Category Axes> for an explanation of Excel's distinction between the axis types.
 
@@ -3734,6 +3772,15 @@ Reverse the order of the axis categories or values. (Applicable to category and 
 Set the log base of the axis range. (Applicable to value axes only).
 
     $chart->set_x_axis( log_base => 10 );
+
+=item * C<label_position>
+
+Set the "Axis labels" position for the axis. The following positions are available:
+
+    next_to (the default)
+    high
+    low
+    none
 
 =back
 
