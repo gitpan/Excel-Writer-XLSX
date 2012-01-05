@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Chart;
 #
 # Used in conjunction with Excel::Writer::XLSX.
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.43';
+our $VERSION = '0.44';
 
 
 ###############################################################################
@@ -1701,11 +1701,11 @@ sub _write_cat_val_axis {
     $self->_write_axis_id( $self->{_axis_ids}->[0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_axis->{reverse}, $x_axis->{_min},
+    $self->_write_scaling( $x_axis->{_reverse}, $x_axis->{_min},
         $x_axis->{_max}, $x_axis->{_log_base} );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $y_axis->{reverse} );
+    $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines() if not $hide_major_gridlines;
@@ -1774,11 +1774,11 @@ sub _write_date_axis {
     $self->_write_axis_id( $self->{_axis_ids}->[0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_axis->{reverse}, $x_axis->{_min},
+    $self->_write_scaling( $x_axis->{_reverse}, $x_axis->{_min},
         $x_axis->{_max}, $x_axis->{_log_base} );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $y_axis->{reverse} );
+    $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
     # Write the axis title elements.
     my $title;
@@ -4343,7 +4343,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXI, John McNamara.
+Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 
