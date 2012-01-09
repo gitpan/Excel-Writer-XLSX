@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.44';
+our $VERSION = '0.45';
 
 
 ###############################################################################
@@ -60,6 +60,7 @@ sub new {
     $self->{_1904}         = $_[7];
     $self->{_palette}      = $_[8];
     $self->{_optimization} = $_[9] || 0;
+    $self->{_tempdir}      = $_[10];
 
     $self->{_ext_sheets} = [];
     $self->{_fileclosed} = 0;
@@ -183,7 +184,7 @@ sub new {
     $self->{_previous_row} = 0;
 
     if ( $self->{_optimization} == 1 ) {
-        my $fh  = tempfile();
+        my $fh  = tempfile( DIR => $self->{_tempdir} );
         binmode $fh, ':utf8';
 
         my $writer = Excel::Writer::XLSX::Package::XMLwriterSimple->new( $fh );
@@ -5599,21 +5600,27 @@ sub _write_cell {
             $self->{_writer}->startTag( 'c', @attributes );
             $self->{_writer}->startTag( 'is' );
 
+            my $string = $token;
+
+            # Escape control characters. See SharedString.pm for details.
+            $string =~ s/(_x[0-9a-fA-F]{4}_)/_x005F$1/g;
+            $string =~ s/([\x00-\x08\x0B-\x1F])/sprintf "_x%04X_", ord($1)/eg;
+
             # Write any rich strings without further tags.
-            if ( $token =~ m{^<r>} && $token =~ m{</r>$} ) {
+            if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
                 my $fh = $self->{_writer}->getOutput();
 
                 local $\ = undef;    # Protect print from -l on commandline.
-                print $fh $token;
+                print $fh $string;
             }
             else {
                 my @t_attributes;
 
                 # Add attribute to preserve leading or trailing whitespace.
-                if ( $token =~ /^\s/ || $token =~ /\s$/ ) {
+                if ( $string =~ /^\s/ || $string =~ /\s$/ ) {
                     push @t_attributes, ( 'xml:space' => 'preserve' );
                 }
-                $self->{_writer}->dataElement( 't', $token, @t_attributes );
+                $self->{_writer}->dataElement( 't', $string, @t_attributes );
             }
 
             $self->{_writer}->endTag( 'is' );
