@@ -32,7 +32,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.45';
+our $VERSION = '0.46';
 
 
 ###############################################################################
@@ -309,6 +309,7 @@ sub add_worksheet {
         $self->{_1904},
         $self->{_palette},
         $self->{_optimization},
+        $self->{_tempdir},
     );
 
     my $worksheet = Excel::Writer::XLSX::Worksheet->new( @init_data );

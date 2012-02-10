@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.45';
+our $VERSION = '0.46';
 
 
 ###############################################################################
@@ -1744,10 +1744,10 @@ sub _write_cat_val_axis {
     $self->_write_cross_between();
 
     # Write the c:majorUnit element.
-    $self->_write_c_major_unit( $y_axis->{_major_unit} );
+    $self->_write_c_major_unit( $x_axis->{_major_unit} );
 
     # Write the c:minorUnit element.
-    $self->_write_c_minor_unit( $y_axis->{_minor_unit} );
+    $self->_write_c_minor_unit( $x_axis->{_minor_unit} );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
