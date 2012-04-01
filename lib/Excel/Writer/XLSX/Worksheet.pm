@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.46';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -2474,6 +2474,7 @@ sub outline_settings {
 #         -1 : insufficient number of arguments
 #         -2 : row or column out of range
 #         -3 : long string truncated to 32767 chars
+#         -4 : url contains whitespace
 #
 sub write_url {
 
@@ -2542,6 +2543,13 @@ sub write_url {
     # External links to URLs and to other Excel workbooks have slightly
     # different characteristics that we have to account for.
     if ( $link_type == 1 ) {
+
+        # Check for white space in url.
+        if ($url =~ /[\s\x00]/) {
+            carp "White space in url '$url' is not allowed by Excel";
+            return -4;
+
+        }
 
         # Ordinary URL style external links don't have a "location" string.
         $str = undef;
@@ -2784,11 +2792,17 @@ sub set_row {
     my $hidden    = shift || 0;     # Hidden flag.
     my $level     = shift || 0;     # Outline level.
     my $collapsed = shift || 0;     # Collapsed row.
+    my $min_col   = 0;
 
     return unless defined $row;     # Ensure at least $row is specified.
 
-    # Check that row and col are valid and store max and min values.
-    return -2 if $self->_check_dimensions( $row, 0 );
+    # Use min col in _check_dimensions(). Default to 0 if undefined.
+    if ( defined $self->{_dim_colmin} ) {
+        $min_col = $self->{_dim_colmin};
+    }
+
+    # Check that row is valid.
+    return -2 if $self->_check_dimensions( $row, $min_col );
 
     $height = 15 if !defined $height;
 
@@ -3240,10 +3254,19 @@ sub data_validation {
 #
 sub conditional_formatting {
 
-    my $self = shift;
+    my $self       = shift;
+    my $user_range = '';
 
     # Check for a cell reference in A1 notation and substitute row and column
     if ( $_[0] =~ /^\D/ ) {
+
+        # Check for a user defined multiple range like B3:K6,B8:K11.
+        if ( $_[0] =~ /,/ ) {
+            $user_range = $_[0];
+            $user_range =~ s/\s*,\s*/ /g;
+            $user_range =~ s/\$//g;
+        }
+
         @_ = $self->_substitute_cellref( @_ );
     }
 
@@ -3274,12 +3297,22 @@ sub conditional_formatting {
 
     # List of valid input parameters.
     my %valid_parameter = (
-        type     => 1,
-        format   => 1,
-        criteria => 1,
-        value    => 1,
-        minimum  => 1,
-        maximum  => 1,
+        type      => 1,
+        format    => 1,
+        criteria  => 1,
+        value     => 1,
+        minimum   => 1,
+        maximum   => 1,
+        min_type  => 1,
+        mid_type  => 1,
+        max_type  => 1,
+        min_value => 1,
+        mid_value => 1,
+        max_value => 1,
+        min_color => 1,
+        mid_color => 1,
+        max_color => 1,
+        bar_color => 1,
     );
 
     # Check for valid input parameters.
@@ -3437,6 +3470,11 @@ sub conditional_formatting {
         $start_cell = xl_rowcol_to_cell( $row1, $col1 );
     }
 
+    # Override with user defined multiple range if provided.
+    if ( $user_range ) {
+        $range = $user_range;
+    }
+
     # Get the dxf format index.
     if ( defined $param->{format} && ref $param->{format} ) {
         $param->{format} = $param->{format}->get_dxf_index();
@@ -3449,23 +3487,23 @@ sub conditional_formatting {
     if ( $param->{type} eq 'text' ) {
 
         if ( $param->{criteria} eq 'containsText' ) {
-            $param->{type}     = 'containsText';
-            $param->{formula}  = sprintf 'NOT(ISERROR(SEARCH("%s",%s)))',
+            $param->{type}    = 'containsText';
+            $param->{formula} = sprintf 'NOT(ISERROR(SEARCH("%s",%s)))',
               $param->{value}, $start_cell;
         }
         elsif ( $param->{criteria} eq 'notContains' ) {
-            $param->{type}     = 'notContainsText';
-            $param->{formula}  = sprintf 'ISERROR(SEARCH("%s",%s))',
+            $param->{type}    = 'notContainsText';
+            $param->{formula} = sprintf 'ISERROR(SEARCH("%s",%s))',
               $param->{value}, $start_cell;
         }
         elsif ( $param->{criteria} eq 'beginsWith' ) {
-            $param->{type}     = 'beginsWith';
-            $param->{formula}  = sprintf 'LEFT(%s,1)="%s"',
+            $param->{type}    = 'beginsWith';
+            $param->{formula} = sprintf 'LEFT(%s,1)="%s"',
               $start_cell, $param->{value};
         }
         elsif ( $param->{criteria} eq 'endsWith' ) {
-            $param->{type}     = 'endsWith';
-            $param->{formula}  = sprintf 'RIGHT(%s,1)="%s"',
+            $param->{type}    = 'endsWith';
+            $param->{formula} = sprintf 'RIGHT(%s,1)="%s"',
               $start_cell, $param->{value};
         }
         else {
@@ -6195,7 +6233,8 @@ sub _write_autofilters {
         my @tokens = @{ $self->{_filter_cols}->{$col} };
         my $type   = $self->{_filter_type}->{$col};
 
-        $self->_write_filter_column( $col, $type, \@tokens );
+        # Filters are relative to first column in the autofilter.
+        $self->_write_filter_column( $col - $col1, $type, \@tokens );
     }
 }
 

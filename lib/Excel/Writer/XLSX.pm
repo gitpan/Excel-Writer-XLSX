@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.46';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.46 of Excel::Writer::XLSX, released February 10, 2012.
+This document refers to version 0.47 of Excel::Writer::XLSX, released April 1, 2012.
 
 
 
@@ -428,7 +428,7 @@ The C<File::Temp> module is used to create these temporary files. File::Temp use
 
     perl -MFile::Spec -le "print File::Spec->tmpdir()"
 
-If the default temporary file directory isn't accessible to your application, or doesn't contain enought space, you can specify an alternative location using the C<set_tempdir()> method:
+If the default temporary file directory isn't accessible to your application, or doesn't contain enough space, you can specify an alternative location using the C<set_tempdir()> method:
 
     $workbook->set_tempdir( '/tmp/writeexcel' );
     $workbook->set_tempdir( 'c:\windows\temp\writeexcel' );
@@ -577,7 +577,7 @@ The following methods are available through a new worksheet:
     insert_image()
     insert_chart()
     data_validation()
-    conditional_format()
+    conditional_formatting()
     get_name()
     activate()
     select()
@@ -1155,6 +1155,8 @@ Finally, you can avoid most of these quoting problems by using forward slashes. 
     $worksheet->write_url( 'A14', "external:c:/temp/foo.xlsx" );
     $worksheet->write_url( 'A15', 'external://NETWORK/share/foo.xlsx' );
 
+Note, Excel doesn't allow white space in hyperlink urls. Urls with whitespace will generate a warning and be ignored.
+
 See also, the note about L<Cell notation>.
 
 
@@ -1579,9 +1581,9 @@ See also the C<data_validate.pl> program in the examples directory of the distro
 
 
 
-=head2 conditional_format()
+=head2 conditional_formatting()
 
-The C<conditional_format()> method is used to add formatting to a cell or range of cells based on user defined criteria.
+The C<conditional_formatting()> method is used to add formatting to a cell or range of cells based on user defined criteria.
 
     $worksheet->conditional_formatting( 'A1:J10',
         {
@@ -1804,7 +1806,7 @@ Examples:
     $worksheet->set_column( 'E:E', 20 );   # Column  E   width set to 20
     $worksheet->set_column( 'F:H', 30 );   # Columns F-H width set to 30
 
-The width corresponds to the column width value that is specified in Excel. It is approximately equal to the length of a string in the default font of Arial 10. Unfortunately, there is no way to specify "AutoFit" for a column in the Excel file format. This feature is only available at runtime from within Excel.
+The width corresponds to the column width value that is specified in Excel. It is approximately equal to the length of a string in the default font of Calibri 11. Unfortunately, there is no way to specify "AutoFit" for a column in the Excel file format. This feature is only available at runtime from within Excel.
 
 As usual the C<$format> parameter is optional, for additional information, see L<CELL FORMATTING>. If you wish to set the format without changing the width you can pass C<undef> as the width parameter:
 
@@ -2720,7 +2722,7 @@ or after the Format has been constructed by means of the C<set_format_properties
 You can also store the properties in one or more named hashes and pass them to the required method:
 
     my %font = (
-        font  => 'Arial',
+        font  => 'Calibri',
         size  => 12,
         color => 'blue',
         bold  => 1,
@@ -2741,7 +2743,7 @@ The provision of two ways of setting properties might lead you to wonder which i
 The Perl/Tk style of adding properties is also supported:
 
     my %font = (
-        -font  => 'Arial',
+        -font  => 'Calibri',
         -size  => 12,
         -color => 'blue',
         -bold  => 1,
@@ -2752,7 +2754,7 @@ The Perl/Tk style of adding properties is also supported:
 
 =head2 Working with formats
 
-The default format is Arial 10 with all other properties off.
+The default format is Calibri 11 with all other properties off.
 
 Each unique format in Excel::Writer::XLSX must have a corresponding Format object. It isn't possible to use a Format with a write() method and then redefine the Format for use at a later stage. This is because a Format is applied to a cell not in its current state but in its final state. Consider the following example:
 
@@ -2833,7 +2835,7 @@ However, this method is here mainly for legacy reasons. It is preferable to set 
 
 =head2 set_font( $fontname )
 
-    Default state:      Font is Arial
+    Default state:      Font is Calibri
     Default action:     None
     Valid args:         Any valid font name
 
@@ -2841,7 +2843,7 @@ Specify the font used:
 
     $format->set_font('Times New Roman');
 
-Excel can only display fonts that are installed on the system that it is running on. Therefore it is best to use the fonts that come as standard such as 'Arial', 'Times New Roman' and 'Courier New'. See also the Fonts worksheet created by formats.pl
+Excel can only display fonts that are installed on the system that it is running on. Therefore it is best to use the fonts that come as standard such as 'Calibri', 'Times New Roman' and 'Courier New'. See also the Fonts worksheet created by formats.pl
 
 
 
@@ -3504,7 +3506,7 @@ Excel provides a colour palette of 56 colours. In Excel::Writer::XLSX these colo
 
     my $format = $workbook->add_format(
                                         color => 12, # index for blue
-                                        font  => 'Arial',
+                                        font  => 'Calibri',
                                         size  => 12,
                                         bold  => 1,
                                      );
@@ -4212,24 +4214,27 @@ For example the following criteria is used to highlight cells >= 50 in red in th
 
 
 
-=head2 conditional_format( $row, $col, { parameter => 'value', ... } )
+=head2 conditional_formatting( $row, $col, { parameter => 'value', ... } )
 
-The C<conditional_format()> method is used to apply formatting  based on used defined criteria to an Excel::Writer::XLSX file.
+The C<conditional_formatting()> method is used to apply formatting  based on used defined criteria to an Excel::Writer::XLSX file.
 
 It can be applied to a single cell or a range of cells. You can pass 3 parameters such as C<($row, $col, {...})> or 5 parameters such as C<($first_row, $first_col, $last_row, $last_col, {...})>. You can also use C<A1> style notation. For example:
 
-    $worksheet->conditional_format( 0, 0,       {...} );
-    $worksheet->conditional_format( 0, 0, 4, 1, {...} );
+    $worksheet->conditional_formatting( 0, 0,       {...} );
+    $worksheet->conditional_formatting( 0, 0, 4, 1, {...} );
 
     # Which are the same as:
 
-    $worksheet->conditional_format( 'A1',       {...} );
-    $worksheet->conditional_format( 'A1:B5',    {...} );
+    $worksheet->conditional_formatting( 'A1',       {...} );
+    $worksheet->conditional_formatting( 'A1:B5',    {...} );
 
 See also the note about L<Cell notation> for more information.
 
+Using C<A1> style notation is is also possible to specify non-contiguous ranges, separated by a comma. For example:
 
-The last parameter in C<conditional_format()> must be a hash ref containing the parameters that describe the type and style of the data validation. The main parameters are:
+    $worksheet->conditional_formatting( 'A1:D5,A8:D12', {...} );
+
+The last parameter in C<conditional_formatting()> must be a hash ref containing the parameters that describe the type and style of the data validation. The main parameters are:
 
     type
     format
@@ -4238,11 +4243,24 @@ The last parameter in C<conditional_format()> must be a hash ref containing the 
     minimum
     maximum
 
+Other, less used parameters are:
+
+    min_type
+    mid_type
+    max_type
+    min_value
+    mid_value
+    max_value
+    min_color
+    mid_color
+    max_color
+    bar_color
+
 Additional parameters which are used for specific conditional format types are shown in the relevant sections below.
 
 =head2 type
 
-This parameter is passed in a hash ref to C<conditional_format()>.
+This parameter is passed in a hash ref to C<conditional_formatting()>.
 
 The C<type> parameter is used to set the type of conditional formatting that you wish to apply. It is always required and it has no default value. Allowable C<type> values and their associated parameters are:
 
@@ -4654,6 +4672,53 @@ $worksheet->conditional_formatting( 'A1:A4',
 );
 
 The formula is specified in the C<criteria>.
+
+
+=head2 min_type, mid_type, max_type
+
+The C<min_type> and C<max_type> properties are available when the conditional formatting type is C<2_color_scale>, C<3_color_scale> or C<data_bar>. The C<mid_type> is available for C<3_color_scale>. The properties are used as follows:
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type      => '2_color_scale',
+            min_type  => 'percent',
+            max_type  => 'percent',
+        }
+    );
+
+The available min/mid/max types are:
+
+    num
+    percent
+    percentile
+    formula
+
+
+=head2 min_value, mid_value, max_value
+
+The C<min_value> and C<max_value> properties are available when the conditional formatting type is C<2_color_scale>, C<3_color_scale> or C<data_bar>. The C<mid_value> is available for C<3_color_scale>. The properties are used as follows:
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type       => '2_color_scale',
+            min_value  => 10,
+            max_value  => 90,
+        }
+    );
+
+=head2 min_color, mid_color,  max_color, bar_color
+
+The C<min_color> and C<max_color> properties are available when the conditional formatting type is C<2_color_scale>, C<3_color_scale> or C<data_bar>. The C<mid_color> is available for C<3_color_scale>. The properties are used as follows:
+
+    $worksheet->conditional_formatting( 'A1:A12',
+        {
+            type      => '2_color_scale',
+            min_color => "#C5D9F1",
+            max_color => "#538ED5",
+        }
+    );
+
+The color can be specifies as an Excel::Write::Excel color index or, more usefully, as a Html style RGB hex number, as shown above.
 
 
 =head2 Conditional Formatting Examples
@@ -5314,7 +5379,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
     data_validation()           Yes
-    conditional_format()        Yes. Not in Spreadsheet::WriteExcel.
+    conditional_formatting()    Yes. Not in Spreadsheet::WriteExcel.
     get_name()                  Yes
     activate()                  Yes
     select()                    Yes
