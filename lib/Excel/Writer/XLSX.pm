@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.47';
+our $VERSION = '0.48';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.47 of Excel::Writer::XLSX, released April 1, 2012.
+This document refers to version 0.48 of Excel::Writer::XLSX, released June 25, 2012.
 
 
 
@@ -142,6 +142,7 @@ The Excel::Writer::XLSX module provides an object oriented interface to a new Ex
     add_worksheet()
     add_format()
     add_chart()
+    add_shape()
     close()
     set_properties()
     define_name()
@@ -331,8 +332,27 @@ Specifies that the Chart object will be inserted in a worksheet via the C<insert
 
 See Excel::Writer::XLSX::Chart for details on how to configure the chart object once it is created. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
+=head2 add_shape( %properties )
+
+The C<add_shape()> method can be used to create new shapes that may be inserted into a worksheet.
+
+You can either define the properties at creation time via a hash of property values or later via method calls.
+
+    # Set properties at creation.
+    $plus = $workbook->add_shape(
+        type   => 'plus',
+        id     => 3,
+        width  => $pw,
+        height => $ph
+    );
 
 
+    # Default rectangle shape. Set properties later.
+    $rect =  $workbook->add_shape();
+
+See L<Excel::Writer::XLSX::Shape> for details on how to configure the shape object once it is created.
+
+See also the C<shape*.pl> programs in the examples directory of the distro.
 
 =head2 close()
 
@@ -517,7 +537,7 @@ The following example returns the first and last worksheet in a workbook:
     }
 
 
-Array slices are explained in the perldata manpage.
+Array slices are explained in the C<perldata> manpage.
 
 
 
@@ -576,6 +596,7 @@ The following methods are available through a new worksheet:
     add_write_handler()
     insert_image()
     insert_chart()
+    insert_shape()
     data_validation()
     conditional_formatting()
     get_name()
@@ -1552,8 +1573,33 @@ The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted ima
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_chart( 'E2', $chart, 0, 0, 1.2, 1.5 );
 
+=head2 insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
 
+This method can be used to insert a Shape object into a worksheet. The Shape must be created by the C<add_shape()> Workbook method.
 
+    my $shape = $workbook->add_shape( name => 'My Shape', type => 'plus' );
+
+    # Configure the shape.
+    $shape->set_text('foo');
+    ...
+
+    # Insert the shape into the a worksheet.
+    $worksheet->insert_shape( 'E2', $shape );
+
+See C<add_shape()> for details on how to create the Shape object and L<Excel::Writer::XLSX::Shape> for details on how to configure it.
+
+The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+
+The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
+
+    $worksheet1->insert_shape( 'E2', $chart, 3, 3 );
+
+The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted shape horizontally and vertically:
+
+    # Scale the width by 120% and the height by 150%
+    $worksheet->insert_shape( 'E2', $shape, 0, 0, 1.2, 1.5 );
+
+See also the C<shape*.pl> programs in the examples directory of the distro.
 
 =head2 data_validation()
 
@@ -2566,7 +2612,7 @@ Note that although it is valid to use both C<fit_to_pages()> and C<set_print_sca
 
 Note that C<fit_to_pages()> will override any manual page breaks that are defined in the worksheet.
 
-
+Note: When using C<fit_to_pages()> it may also be required to set the printer paper size using C<set_paper()> or else Excel will default to "US Letter".
 
 
 =head2 set_start_page( $start_page )
@@ -5293,6 +5339,14 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     rich_strings.pl         Example of strings with multiple formats.
     right_to_left.pl        Change default sheet direction to right to left.
     sales.pl                An example of a simple sales spreadsheet.
+    shape1.pl               Insert shapes in worksheet.
+    shape2.pl               Insert shapes in worksheet. With properties.
+    shape3.pl               Insert shapes in worksheet. Scaled.
+    shape4.pl               Insert shapes in worksheet. With modification.
+    shape5.pl               Insert shapes in worksheet. With connections.
+    shape6.pl               Insert shapes in worksheet. With connections.
+    shape7.pl               Insert shapes in worksheet. One to many connections.
+    shape_all.pl            Demo of all the available shape and connector types.
     stats_ext.pl            Same as stats.pl with external references.
     stocks.pl               Demonstrates conditional formatting.
     tab_colors.pl           Example of how to set worksheet tab colours.
@@ -5345,6 +5399,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     add_worksheet()             Yes
     add_format()                Yes
     add_chart()                 Yes
+    add_shape()                 Yes. Not in Spreadsheet::WriteExcel.
     close()                     Yes
     set_properties()            Yes
     define_name()               Yes
@@ -5354,8 +5409,8 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     set_1904()                  Yes
     set_optimization()          Yes. Not required in Spreadsheet::WriteExcel.
     add_chart_ext()             Not supported. Not required in Excel::Writer::XLSX.
-    compatibility_mode()        Deprecated.    Not required in Excel::Writer::XLSX.
-    set_codepage()              Deprecated.    Not required in Excel::Writer::XLSX.
+    compatibility_mode()        Deprecated. Not required in Excel::Writer::XLSX.
+    set_codepage()              Deprecated. Not required in Excel::Writer::XLSX.
 
 
     Worksheet Methods           Support
@@ -5378,6 +5433,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     add_write_handler()         Yes
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
+    insert_shape()              Yes. Not in Spreadsheet::WriteExcel.
     data_validation()           Yes
     conditional_formatting()    Yes. Not in Spreadsheet::WriteExcel.
     get_name()                  Yes

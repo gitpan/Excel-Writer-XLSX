@@ -1,4 +1,4 @@
-package Excel::Writer::XLSX::Workbook;
+﻿package Excel::Writer::XLSX::Workbook;
 
 ###############################################################################
 #
@@ -26,13 +26,14 @@ use Archive::Zip;
 use Excel::Writer::XLSX::Worksheet;
 use Excel::Writer::XLSX::Chartsheet;
 use Excel::Writer::XLSX::Format;
+use Excel::Writer::XLSX::Shape;
 use Excel::Writer::XLSX::Chart;
 use Excel::Writer::XLSX::Package::Packager;
 use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.48';
 
 
 ###############################################################################
@@ -399,6 +400,9 @@ sub add_chart {
     }
     else {
 
+        # Set the embedded chart name if present.
+        $chart->{_chart_name} = $arg{name} if $arg{name};
+
         # Set index to 0 so that the activate() and set_first_sheet() methods
         # point back to the first worksheet if used for embedded charts.
         $chart->{_index}   = 0;
@@ -491,6 +495,25 @@ sub add_format {
     return $format;
 }
 
+
+###############################################################################
+#
+# add_shape(%properties)
+#
+# Add a new shape to the Excel workbook.
+#
+sub add_shape {
+
+    my $self = shift;
+    my $shape = Excel::Writer::XLSX::Shape->new( @_ );
+
+    $shape->{_palette} = $self->{_palette};
+
+
+    push @{ $self->{_shapes} }, $shape;    # Store shape reference.
+
+    return $shape;
+}
 
 ###############################################################################
 #
@@ -1382,7 +1405,10 @@ sub _prepare_drawings {
 
         my $chart_count = scalar @{ $sheet->{_charts} };
         my $image_count = scalar @{ $sheet->{_images} };
-        next unless ( $chart_count + $image_count );
+        my $shape_count = scalar @{ $sheet->{_shapes} };
+        next unless ( $chart_count + $image_count + $shape_count);
+
+        $sheet->_sort_charts();
 
         $drawing_id++;
 
@@ -1402,6 +1428,10 @@ sub _prepare_drawings {
 
             $sheet->_prepare_image( $index, $image_ref_id, $drawing_id, $width,
                 $height, $name, $type );
+        }
+
+        for my $index ( 0 .. $shape_count - 1 ) {
+            $sheet->_prepare_shape( $index, $drawing_id );
         }
 
         my $drawing = $sheet->{_drawing};

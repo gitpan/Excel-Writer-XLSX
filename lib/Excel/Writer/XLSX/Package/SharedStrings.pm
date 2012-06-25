@@ -17,10 +17,11 @@ use 5.008002;
 use strict;
 use warnings;
 use Carp;
+use Encode;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.48';
 
 
 ###############################################################################
@@ -212,7 +213,12 @@ sub _write_si {
     if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
         my $fh = $self->{_writer}->getOutput();
 
-        local $\ = undef; # Protect print from -l on commandline.
+        # Prevent utf8 strings from getting double encoded.
+        $string = decode_utf8( $string );
+
+        # Protect print from -l on commandline.
+        local $\ = undef;
+
         print $fh $string;
     }
     else {

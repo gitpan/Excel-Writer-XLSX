@@ -19,6 +19,7 @@ use strict;
 use warnings;
 use Carp;
 use File::Temp 'tempfile';
+use List::Util qw(max min);
 use Excel::Writer::XLSX::Format;
 use Excel::Writer::XLSX::Drawing;
 use Excel::Writer::XLSX::Package::XMLwriter;
@@ -26,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.48';
 
 
 ###############################################################################
@@ -170,6 +171,7 @@ sub new {
     $self->{_col_size_changed} = 0;
     $self->{_row_size_changed} = 0;
 
+    $self->{_last_shape_id}          = 1;
     $self->{_hlink_count}            = 0;
     $self->{_hlink_refs}             = [];
     $self->{_external_hyper_links}   = [];
@@ -178,6 +180,8 @@ sub new {
     $self->{_drawing_links}          = [];
     $self->{_charts}                 = [];
     $self->{_images}                 = [];
+    $self->{_shapes}                 = [];
+    $self->{_shape_hash}             = {};
     $self->{_drawing}                = 0;
 
     $self->{_rstring}      = '';
@@ -2162,6 +2166,7 @@ sub write_rich_string {
     # Create a temp XML::Writer object and use it to write the rich string
     # XML to a string.
     open my $str_fh, '>', \$str or die "Failed to open filehandle: $!";
+    binmode $str_fh, ':utf8';
 
     my $writer = Excel::Writer::XLSX::Package::XMLwriterSimple->new( $str_fh );
 
@@ -3399,7 +3404,9 @@ sub conditional_formatting {
     );
 
     # Check for valid criteria types.
-    if ( exists $criteria_type{ lc( $param->{criteria} ) } ) {
+    if ( defined $param->{criteria}
+        && exists $criteria_type{ lc( $param->{criteria} ) } )
+    {
         $param->{criteria} = $criteria_type{ lc( $param->{criteria} ) };
     }
 
@@ -4081,6 +4088,54 @@ sub _position_object_emus {
 
 ###############################################################################
 #
+#  _position_shape_emus()
+#
+# Calculate the vertices that define the position of a shape object within
+# the worksheet in EMUs.  Save the vertices with the object.
+#
+# The vertices are expressed as English Metric Units (EMUs). There are 12,700
+# EMUs per point. Therefore, 12,700 * 3 /4 = 9,525 EMUs per pixel.
+#
+sub _position_shape_emus {
+
+    my $self  = shift;
+    my $shape = shift;
+
+    my (
+        $col_start, $row_start, $x1, $y1,    $col_end,
+        $row_end,   $x2,        $y2, $x_abs, $y_abs
+      )
+      = $self->_position_object_pixels(
+        $shape->{_column_start},
+        $shape->{_row_start},
+        $shape->{_x_offset},
+        $shape->{_y_offset},
+        $shape->{_width} * $shape->{_scale_x},
+        $shape->{_height} * $shape->{_scale_y},
+        $shape->{_drawing}
+      );
+
+    # Now that x2/y2 have been calculated with a potentially negative
+    # width/height we use the absolute value and convert to EMUs.
+    $shape->{_width_emu}  = abs( $shape->{_width} * 9_525 );
+    $shape->{_height_emu} = abs( $shape->{_height} * 9_525 );
+
+    $shape->{_column_start} = $col_start;
+    $shape->{_row_start}    = $row_start;
+    $shape->{_column_end}   = $col_end;
+    $shape->{_row_end}      = $row_end;
+
+    # Convert the pixel values to EMUs. See above.
+    $shape->{_x1}    = $x1 * 9_525;
+    $shape->{_y1}    = $y1 * 9_525;
+    $shape->{_x2}    = $x2 * 9_525;
+    $shape->{_y2}    = $y2 * 9_525;
+    $shape->{_x_abs} = $x_abs * 9_525;
+    $shape->{_y_abs} = $y_abs * 9_525;
+}
+
+###############################################################################
+#
 # _size_col($col)
 #
 # Convert the width of a cell from user's units to pixels. Excel rounds the
@@ -4292,6 +4347,32 @@ sub insert_chart {
 
 ###############################################################################
 #
+# _sort_charts()
+#
+# Sort the worksheet charts into the order that they were created in rather
+# than the insertion order. This is ensure that the chart and drawing objects
+# written in the same order. The chart id is used to sort back into creation
+# order.
+#
+sub _sort_charts {
+
+    my $self        = shift;
+    my $chart_count = scalar @{ $self->{_charts} };
+
+    # Return if no sorting is required.
+    return if $chart_count < 2;
+
+    my @chart_data = @{ $self->{_charts} };
+
+    # Sort the charts into creation order based on the chart id.
+    @chart_data = sort { $a->[2]->{_id} <=> $b->[2]->{_id} } @chart_data;
+
+    $self->{_charts} = \@chart_data;
+}
+
+
+###############################################################################
+#
 # _prepare_chart()
 #
 # Set up chart/drawings.
@@ -4314,11 +4395,15 @@ sub _prepare_chart {
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
         $height );
 
+    # Set the chart name for the embedded object if it has been specified.
+    my $name = $chart->{_chart_name};
+
     # Create a Drawing object to use with worksheet unless one already exists.
     if ( !$self->{_drawing} ) {
 
         my $drawing = Excel::Writer::XLSX::Drawing->new();
-        $drawing->_add_drawing_object( $drawing_type, @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions, 0, 0,
+            $name );
         $drawing->{_embedded} = 1;
 
         $self->{_drawing} = $drawing;
@@ -4328,7 +4413,8 @@ sub _prepare_chart {
     }
     else {
         my $drawing = $self->{_drawing};
-        $drawing->_add_drawing_object( $drawing_type, @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions, 0, 0,
+            $name );
 
     }
 
@@ -4508,6 +4594,270 @@ sub _prepare_image {
 
     push @{ $self->{_drawing_links} },
       [ '/image', '../media/image' .  $image_id . '.' . $image_type ];
+}
+
+
+###############################################################################
+#
+# insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+#
+# Insert a shape into the worksheet.
+#
+sub insert_shape {
+
+    my $self = shift;
+
+    # Check for a cell reference in A1 notation and substitute row and column.
+    if ( $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    # Check the number of arguments.
+    croak "Insufficient arguments in insert_shape()" unless @_ >= 3;
+
+    my $shape = $_[2];
+
+    # Verify we are being asked to insert a "shape" object.
+    croak "Not a Shape object in insert_shape()"
+      unless $shape->isa( 'Excel::Writer::XLSX::Shape' );
+
+    # Set the shape properties.
+    $shape->{_row_start}    = $_[0];
+    $shape->{_column_start} = $_[1];
+    $shape->{_x_offset}     = $_[3] || 0;
+    $shape->{_y_offset}     = $_[4] || 0;
+
+    # Override shape scale if supplied as an argument.  Otherwise, use the
+    # existing shape scale factors.
+    $shape->{_scale_x} = $_[5] if defined $_[5];
+    $shape->{_scale_y} = $_[6] if defined $_[6];
+
+    # Assign a shape ID.
+    my $needs_id = 1;
+    while ( $needs_id ) {
+        my $id = $shape->{_id} || 0;
+        my $used = exists $self->{_shape_hash}->{$id} ? 1 : 0;
+
+        # Test if shape ID is already used. Othewise assign a new one.
+        if ( !$used && $id != 0 ) {
+            $needs_id = 0;
+        }
+        else {
+            $shape->{_id} = ++$self->{_last_shape_id};
+        }
+    }
+
+    # For connectors change x/y coords based on location of connected shapes.
+    $self->_auto_locate_connectors( $shape );
+
+    $shape->{_element} = $#{ $self->{_shapes} } + 1;
+
+    # Allow lookup of entry into shape array by shape ID.
+    $self->{_shape_hash}->{ $shape->{_id} } = $shape->{_element};
+
+    # Create link to Worksheet color palette.
+    $shape->{_palette} = $self->{_palette};
+
+    if ( $shape->{_stencil} ) {
+
+        # Insert a copy of the shape, not a reference so that the shape is
+        # used as a stencil. Previously stamped copies don't get modified
+        # if the stencil is modified.
+        my $insert = { %{$shape} };
+
+        # Bless the copy into this class, so AUTOLOADED _get, _set methods
+        #still work on the child.
+        bless $insert, ref $shape;
+
+        push @{ $self->{_shapes} }, $insert;
+        return $insert;
+    }
+    else {
+
+        # Insert a link to the shape on the list of shapes. Connection to
+        # the parent shape is maintained
+        push @{ $self->{_shapes} }, $shape;
+        return $shape;
+    }
+}
+
+
+###############################################################################
+#
+# _prepare_shape()
+#
+# Set up drawing shapes
+#
+sub _prepare_shape {
+
+    my $self       = shift;
+    my $index      = shift;
+    my $drawing_id = shift;
+    my $shape      = $self->{_shapes}->[$index];
+    my $drawing;
+    my $drawing_type = 3;
+
+    # Create a Drawing object to use with worksheet unless one already exists.
+    if ( !$self->{_drawing} ) {
+
+        $drawing              = Excel::Writer::XLSX::Drawing->new();
+        $drawing->{_embedded} = 1;
+        $self->{_drawing}     = $drawing;
+
+        push @{ $self->{_external_drawing_links} },
+          [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
+    }
+    else {
+        $drawing = $self->{_drawing};
+    }
+
+    # Validate the he shape against various rules.
+    $self->_validate_shape( $shape, $index );
+
+    $self->_position_shape_emus( $shape );
+
+    my @dimensions = (
+        $shape->{_column_start}, $shape->{_row_start},
+        $shape->{_x1},           $shape->{_y1},
+        $shape->{_column_end},   $shape->{_row_end},
+        $shape->{_x2},           $shape->{_y2},
+        $shape->{_x_abs},        $shape->{_y_abs},
+        $shape->{_width_emu},    $shape->{_height_emu},
+    );
+
+    $drawing->_add_drawing_object( $drawing_type, @dimensions, $shape->{_name},
+        $shape );
+}
+
+
+###############################################################################
+#
+# _auto_locate_connectors()
+#
+# Re-size connector shapes if they are connected to other shapes.
+#
+sub _auto_locate_connectors {
+
+    my $self  = shift;
+    my $shape = shift;
+
+    # Valid connector shapes.
+    my $connector_shapes = {
+        straightConnector => 1,
+        Connector         => 1,
+        bentConnector     => 1,
+        curvedConnector   => 1,
+        line              => 1,
+    };
+
+    my $shape_base = $shape->{_type};
+
+    # Remove the number of segments from end of type.
+    chop $shape_base;
+
+    $shape->{_connect} = $connector_shapes->{$shape_base} ? 1 : 0;
+
+    return unless $shape->{_connect};
+
+    # Both ends have to be connected to size it.
+    return unless ( $shape->{_start} and $shape->{_end} );
+
+    # Both ends need to provide info about where to connect.
+    return unless ( $shape->{_start_side} and $shape->{_end_side} );
+
+    my $sid = $shape->{_start};
+    my $eid = $shape->{_end};
+
+    my $slink_id = $self->{_shape_hash}->{$sid};
+    my $sls      = $self->{_shapes}->[$slink_id];    # Start linked shape.
+    my $elink_id = $self->{_shape_hash}->{$eid};
+    my $els      = $self->{_shapes}->[$elink_id];    # End linked shape.
+
+    # Assume shape connections are to the middle of an object, and
+    # not a corner (for now).
+    my $connect_type = $shape->{_start_side} . $shape->{_end_side};
+    my $smidx        = $sls->{_x_offset} + $sls->{_width} / 2;
+    my $emidx        = $els->{_x_offset} + $els->{_width} / 2;
+    my $smidy        = $sls->{_y_offset} + $sls->{_height} / 2;
+    my $emidy        = $els->{_y_offset} + $els->{_height} / 2;
+    my $netx         = abs( $smidx - $emidx );
+    my $nety         = abs( $smidy - $emidy );
+
+    if ( $connect_type eq 'bt' ) {
+        my $sy = $sls->{_y_offset} + $sls->{_height};
+        my $ey = $els->{_y_offset};
+
+        $shape->{_width} = abs( int( $emidx - $smidx ) );
+        $shape->{_x_offset} = int( min( $smidx, $emidx ) );
+        $shape->{_height} =
+          abs(
+            int( $els->{_y_offset} - ( $sls->{_y_offset} + $sls->{_height} ) )
+          );
+        $shape->{_y_offset} = int(
+            min( ( $sls->{_y_offset} + $sls->{_height} ), $els->{_y_offset} ) );
+        $shape->{_flip_h} = ( $smidx < $emidx ) ? 1 : 0;
+        $shape->{_rotation} = 90;
+
+        if ( ( $sy > $ey ) and ( $smidx < $emidx ) ) {
+            $shape->{_flip_v} = 1;
+
+            # Create 3 adjustments for an end shape vertically above a
+            # start shape. Adjustments count from the upper left object.
+            if ( $#{ $shape->{_adjustments} } < 0 ) {
+                $shape->{_adjustments} = [ -10, 50, 110 ];
+            }
+
+            $shape->{_type} = 'bentConnector5';
+        }
+    }
+    elsif ( $connect_type eq 'rl' ) {
+        $shape->{_width} =
+          abs(
+            int( $els->{_x_offset} - ( $sls->{_x_offset} + $sls->{_width} ) ) );
+        $shape->{_height} = abs( int( $emidy - $smidy ) );
+        $shape->{_x_offset} =
+          min( $sls->{_x_offset} + $sls->{_width}, $els->{_x_offset} );
+        $shape->{_y_offset} = min( $smidy, $emidy );
+        $shape->{_flip_v} = ( $smidy > $emidy );
+
+        if ( $smidx > $emidx ) {
+
+            # Create 3 adjustments for an end shape to the left of a
+            # start shape.
+            if ( $#{ $shape->{_adjustments} } < 0 ) {
+                $shape->{_adjustments} = [ -10, 50, 110 ];
+            }
+
+            $shape->{_type} = 'bentConnector5';
+        }
+    }
+    else {
+        warn "Connection $connect_type not implemented yet\n";
+    }
+}
+
+
+###############################################################################
+#
+# _validate_shape()
+#
+# Check shape attributes to ensure they are valid.
+#
+sub _validate_shape {
+
+    my $self  = shift;
+    my $shape = shift;
+    my $index = shift;
+
+    if ( !grep ( /^$shape->{_align}$/, qw[l ctr r just] ) ) {
+        croak "Shape $index ($shape->{_type}) alignment ($shape->{align}), "
+          . "not in ('l', 'ctr', 'r', 'just')\n";
+    }
+
+    if ( !grep ( /^$shape->{_valign}$/, qw[t ctr b] ) ) {
+        croak "Shape $index ($shape->{_type}) vertical alignment "
+          . "($shape->{valign}), not ('t', 'ctr', 'b')\n";
+    }
 }
 
 
@@ -7428,7 +7778,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-ï¿½ MM-MMXII, John McNamara.
+© MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
-

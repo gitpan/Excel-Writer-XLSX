@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Excel-Writer-XLSX
-version:            0.47
+version:            0.48
 abstract:           Create a new file in the Excel 2007+ XLSX format.
 author:
     - John McNamara (jmcnamara@cpan.org)
@@ -15,6 +15,7 @@ requires:
     File::Temp:    0.19
     IO::File:      1.14
 resources:
+    bugtracker:   http://github.com/jmcnamara/excel-writer-xlsx/issues
     homepage:     http://jmcnamara.github.com/excel-writer-xlsx/
     MailingList:  http://groups.google.com/group/spreadsheet-writeexcel
     repository:   http://github.com/jmcnamara/excel-writer-xlsx

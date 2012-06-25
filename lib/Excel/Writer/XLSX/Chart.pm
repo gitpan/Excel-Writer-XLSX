@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.48';
 
 
 ###############################################################################
@@ -84,6 +84,7 @@ sub new {
     $self->{_protection}        = 0;
     $self->{_x_axis}            = {};
     $self->{_y_axis}            = {};
+    $self->{_chart_name}        = '';
 
     bless $self, $class;
     $self->_set_default_properties();
