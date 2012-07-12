@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.48';
+our $VERSION = '0.49';
 
 
 ###############################################################################
@@ -1166,6 +1166,20 @@ sub _prepare_fills {
     $fills{'0:0:0'}  = 0;
     $fills{'17:0:0'} = 1;
 
+
+    # Store the DXF colours separately since them may be reversed below.
+    for my $format ( @{ $self->{_dxf_formats} } ) {
+        if (   $format->{_pattern}
+            || $format->{_bg_color}
+            || $format->{_fg_color} )
+        {
+            $format->{_has_dxf_fill} = 1;
+            $format->{_dxf_bg_color} = $format->{_bg_color};
+            $format->{_dxf_fg_color} = $format->{_fg_color};
+        }
+    }
+
+
     for my $format ( @{ $self->{_xf_formats} } ) {
 
         # The following logical statements jointly take care of special cases
@@ -1176,9 +1190,18 @@ sub _prepare_fills {
         #    a pattern they probably wanted a solid fill, so we fill in the
         #    defaults.
         #
+        if (   $format->{_pattern}  == 1
+            && $format->{_bg_color} ne '0'
+            && $format->{_fg_color} ne '0' )
+        {
+            my $tmp = $format->{_fg_color};
+            $format->{_fg_color} = $format->{_bg_color};
+            $format->{_bg_color} = $tmp;
+        }
+
         if (   $format->{_pattern} <= 1
-            && $format->{_bg_color} != 0
-            && $format->{_fg_color} == 0 )
+            && $format->{_bg_color} ne '0'
+            && $format->{_fg_color} eq '0' )
         {
             $format->{_fg_color} = $format->{_bg_color};
             $format->{_bg_color} = 0;
@@ -1186,12 +1209,13 @@ sub _prepare_fills {
         }
 
         if (   $format->{_pattern} <= 1
-            && $format->{_bg_color} == 0
-            && $format->{_fg_color} != 0 )
+            && $format->{_bg_color} eq '0'
+            && $format->{_fg_color} ne '0' )
         {
             $format->{_bg_color} = 0;
             $format->{_pattern}  = 1;
         }
+
 
         my $key = $format->get_fill_key();
 
@@ -1214,16 +1238,6 @@ sub _prepare_fills {
     $self->{_fill_count} = $index;
 
 
-    # For the DXF formats we only need to check if the properties have changed.
-    for my $format ( @{ $self->{_dxf_formats} } ) {
-
-        if (   $format->{_pattern}
-            || $format->{_bg_color}
-            || $format->{_fg_color} )
-        {
-            $format->{_has_dxf_fill} = 1;
-        }
-    }
 }
 
 

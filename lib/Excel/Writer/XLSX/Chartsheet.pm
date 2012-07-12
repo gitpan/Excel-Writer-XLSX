@@ -20,7 +20,7 @@ use Exporter;
 use Excel::Writer::XLSX::Worksheet;
 
 our @ISA     = qw(Excel::Writer::XLSX::Worksheet);
-our $VERSION = '0.48';
+our $VERSION = '0.49';
 
 
 ###############################################################################
@@ -133,14 +133,16 @@ sub protect {
 #
 ###############################################################################
 
-sub add_series    { return shift->{_chart}->add_series( @_ ) }
-sub set_x_axis    { return shift->{_chart}->set_x_axis( @_ ) }
-sub set_y_axis    { return shift->{_chart}->set_y_axis( @_ ) }
-sub set_title     { return shift->{_chart}->set_title( @_ ) }
-sub set_legend    { return shift->{_chart}->set_legend( @_ ) }
-sub set_plotarea  { return shift->{_chart}->set_plotarea( @_ ) }
-sub set_chartarea { return shift->{_chart}->set_chartarea( @_ ) }
-sub set_style     { return shift->{_chart}->set_style( @_ ) }
+sub add_series       { return shift->{_chart}->add_series( @_ ) }
+sub set_x_axis       { return shift->{_chart}->set_x_axis( @_ ) }
+sub set_y_axis       { return shift->{_chart}->set_y_axis( @_ ) }
+sub set_title        { return shift->{_chart}->set_title( @_ ) }
+sub set_legend       { return shift->{_chart}->set_legend( @_ ) }
+sub set_plotarea     { return shift->{_chart}->set_plotarea( @_ ) }
+sub set_chartarea    { return shift->{_chart}->set_chartarea( @_ ) }
+sub set_style        { return shift->{_chart}->set_style( @_ ) }
+sub show_blanks_as   { return shift->{_chart}->show_blanks_as( @_ ) }
+sub show_hidden_data { return shift->{_chart}->show_hidden_data( @_ ) }
 
 
 ###############################################################################

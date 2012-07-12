@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.48';
+our $VERSION = '0.49';
 
 
 ###############################################################################
@@ -511,6 +511,13 @@ sub _write_fill {
     my $pattern    = $format->{_pattern};
     my $bg_color   = $format->{_bg_color};
     my $fg_color   = $format->{_fg_color};
+
+    # Colors for dxf formats are handled differently from normal formats since
+    # the normal format reverses the meaning of BG and FG for solid fills.
+    if ( $dxf_format ) {
+        $bg_color = $format->{_dxf_bg_color};
+        $fg_color = $format->{_dxf_fg_color};
+    }
 
 
     my @patterns = qw(

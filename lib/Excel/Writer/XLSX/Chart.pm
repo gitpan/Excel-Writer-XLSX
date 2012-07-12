@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.48';
+our $VERSION = '0.49';
 
 
 ###############################################################################
@@ -85,6 +85,8 @@ sub new {
     $self->{_x_axis}            = {};
     $self->{_y_axis}            = {};
     $self->{_chart_name}        = '';
+    $self->{_show_blanks}       = 'gap';
+    $self->{_show_hidden_data}  = 0;
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -433,6 +435,49 @@ sub set_style {
     }
 
     $self->{_style_id} = $style_id;
+}
+
+
+###############################################################################
+#
+# show_blanks_as()
+#
+# Set the option for displaying blank data in a chart. The default is 'gap'.
+#
+sub show_blanks_as {
+
+    my $self   = shift;
+    my $option = shift;
+
+    return unless $option;
+
+    my %valid = (
+        gap  => 1,
+        zero => 1,
+        span => 1,
+
+    );
+
+    if ( !exists $valid{$option} ) {
+        warn "Unknown show_blanks_as() option '$option'\n";
+        return;
+    }
+
+    $self->{_show_blanks} = $option;
+}
+
+
+###############################################################################
+#
+# show_hidden_data()
+#
+# Display data in hidden rows or columns.
+#
+sub show_hidden_data {
+
+    my $self = shift;
+
+    $self->{_show_hidden_data} = 1;
 }
 
 
@@ -1167,7 +1212,30 @@ sub _write_chart {
     # Write the c:plotVisOnly element.
     $self->_write_plot_vis_only();
 
+    # Write the c:dispBlanksAs element.
+    $self->_write_disp_blanks_as();
+
     $self->{_writer}->endTag( 'c:chart' );
+}
+
+
+##############################################################################
+#
+# _write_disp_blanks_as()
+#
+# Write the <c:dispBlanksAs> element.
+#
+sub _write_disp_blanks_as {
+
+    my $self = shift;
+    my $val  = $self->{_show_blanks};
+
+    # Ignore the default value.
+    return if $val eq 'gap';
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:dispBlanksAs', @attributes );
 }
 
 
@@ -2391,6 +2459,9 @@ sub _write_plot_vis_only {
 
     my $self = shift;
     my $val  = 1;
+
+    # Ignore this element if we are plitting hidden data.
+    return if $self->{_show_hidden_data};
 
     my @attributes = ( 'val' => $val );
 
@@ -3956,6 +4027,26 @@ The C<set_style()> method is used to set the style of the chart to one of the 42
     $chart->set_style( 4 );
 
 The default style is 2.
+
+=head2 show_blanks_as()
+
+The C<show_blanks_as()> method controls how blank data is displayed in a chart.
+
+    $chart->show_blanks_as( 'span' );
+
+The available options are:
+
+        gap    # Blank data is show as a gap. The default.
+        zero   # Blank data is displayed as zero.
+        span   # Blank data is connected with a line.
+
+
+=head2 show_hidden_data()
+
+Display data in hidden rows or columns on the chart.
+
+    $chart->show_hidden_data();
+
 
 =head1 CHART FORMATTING
 

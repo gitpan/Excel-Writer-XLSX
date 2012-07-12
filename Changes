@@ -4,6 +4,27 @@ Revision history for Perl module Excel::Writer::XLSX.
 - Removed/deprecated feature.
 ! Bug fix.
 
+0.49 July 12 2012
+
+    + Added show_blanks_as() chart method to control the display of
+      blank data.
+
+    + Added show_hidden_data() chart method to control the display of
+      data in hidden rows and columns.
+
+    ! Added fix for fg/bg colours in conditional formats which are
+      shared with cell formats.
+      Reported by Patryk Kwiatkowski.
+
+    ! Fix for xl_parse_time() with hours > 24. Github issue #11.
+
+    ! Fixed lc() warning in Utility.pm in recent perls. Github issue #10.
+
+    ! Fixed issue with non-integer shape dimensions. Thanks Dave Clarke.
+
+    ! Fixed error handling for shape connectors. Thanks Dave Clarke.
+
+
 0.48 June 25 2012
 
     + Added worksheet shapes. A major new feature.
@@ -161,7 +182,7 @@ Revision history for Perl module Excel::Writer::XLSX.
 0.29 October 5 2011
 
     + Added the merge_range_type() method for finer control over the types
-      writen using merge_range().
+      written using merge_range().
 
 
 0.28 October 4 2011
