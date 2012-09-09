@@ -4,7 +4,7 @@ package TestFunctions;
 #
 # TestFunctions - Helper functions for Excel::Writer::XLSX test cases.
 #
-# reverse('©'), September 2010, John McNamara, jmcnamara@cpan.org
+# reverse('ï¿½'), September 2010, John McNamara, jmcnamara@cpan.org
 #
 
 use 5.008002;
@@ -223,7 +223,7 @@ sub _compare_xlsx_files {
 
         # Remove dates and user specific data from the core.xml data.
         if ( $filename eq 'docProps/core.xml' ) {
-            $exp_xml_str =~ s/John//g;
+            $exp_xml_str =~ s/ ?John//g;
             $exp_xml_str =~ s/\d\d\d\d-\d\d-\d\dT\d\d\:\d\d:\d\dZ//g;
             $got_xml_str =~ s/\d\d\d\d-\d\d-\d\dT\d\d\:\d\d:\d\dZ//g;
         }

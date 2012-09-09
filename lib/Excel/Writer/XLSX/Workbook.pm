@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.49';
+our $VERSION = '0.50';
 
 
 ###############################################################################
@@ -91,6 +91,7 @@ sub new {
     $self->{_window_width}       = 16095;
     $self->{_window_height}      = 9660;
     $self->{_tab_ratio}          = 500;
+    $self->{_table_count}        = 0;
 
 
 
@@ -314,10 +315,13 @@ sub add_worksheet {
         \$self->{_str_unique},
         \$self->{_str_table},
 
+        \$self->{_table_count},
+
         $self->{_1904},
         $self->{_palette},
         $self->{_optimization},
         $self->{_tempdir},
+
     );
 
     my $worksheet = Excel::Writer::XLSX::Worksheet->new( @init_data );
@@ -367,6 +371,8 @@ sub add_chart {
         \$self->{_str_total},
         \$self->{_str_unique},
         \$self->{_str_table},
+
+        \$self->{_table_count},
 
         $self->{_1904},
         $self->{_palette},
