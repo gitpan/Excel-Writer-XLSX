@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.50 of Excel::Writer::XLSX, released September 9, 2012.
+This document refers to version 0.51 of Excel::Writer::XLSX, released September 16, 2012.
 
 
 
@@ -4901,6 +4901,8 @@ Tables in Excel are a way of grouping a range of cells into a single entity that
 
 For more information see "An Overview of Excel Tables" L<http://office.microsoft.com/en-us/excel-help/overview-of-excel-tables-HA010048546.aspx>.
 
+Note, tables don't work in Excel::Writer::XLSX when C<set_optimization()> mode in on.
+
 
 =head2 add_table( $row1, $col1, $row2, $col2, { parameter => 'value', ... })
 
@@ -5675,6 +5677,11 @@ The following limits are imposed by Excel 2007+:
     Maximum chars in a sheet name        31
     Maximum chars in a header/footer     254
 
+    Maximum characters in hyperlink      255
+    Maximum number of unique hyperlinks* 65,530
+
+* Per worksheet. Excel allows a greater number of non-unique hyperlinks if they are contiguous and can be grouped into a single range. This will be supported in a later version of Excel::Writer::XLSX if possible.
+
 
 
 
@@ -5830,13 +5837,57 @@ Perl 5.8.2.
 
 C<Spreadsheet::WriteExcel> was written to optimise speed and reduce memory usage. However, these design goals meant that it wasn't easy to implement features that many users requested such as writing formatting and data separately.
 
-As a result C<Excel::Writer::XLSX> takes a different design approach and holds a lot more data in memory so that it is functionally more flexible. The effect of this is that Excel::Writer::XLSX is about 50% slower than Spreadsheet::WriteExcel and can use significantly more memory. When you add to this the extended row and column ranges it is possible to run out of memory creating very large files. This was almost never an issue with Spreadsheet::WriteExcel.
+As a result C<Excel::Writer::XLSX> takes a different design approach and holds a lot more data in memory so that it is functionally more flexible.
+
+The effect of this is that Excel::Writer::XLSX is about 30% slower than Spreadsheet::WriteExcel and uses 5 times more memory.
+
+In addition the extended row and column ranges in Excel 2007+ mean that it is possible to run out of memory creating large files. This was almost never an issue with Spreadsheet::WriteExcel.
 
 This memory usage can be reduced almost completely by using the Workbook C<set_optimization()> method:
 
     $workbook->set_optimization();
 
-The trade-off is that you won't be able to take advantage of any new features that manipulate cell data, after it is written, with this optimization turned on.
+This also gives an increase in performance to within 1-10% of Spreadsheet::WriteExcel, see below.
+
+The trade-off is that you won't be able to take advantage of any new features that manipulate cell data after it is written. One such feature is Tables.
+
+
+=head2 Performance figures
+
+The performance figures below show execution speed and memory usage for 60 columns x N rows for a 50/50 mixture of strings and numbers. Percentage speeds are relative to Spreadsheet::WriteExcel.
+
+    Excel::Writer::XLSX
+         Rows  Time (s)    Memory (bytes)  Rel. Time
+          400      0.66         6,586,254       129%
+          800      1.26        13,099,422       125%
+         1600      2.55        26,126,361       123%
+         3200      5.16        52,211,284       125%
+         6400     10.47       104,401,428       128%
+        12800     21.48       208,784,519       131%
+        25600     43.90       417,700,746       126%
+        51200     88.52       835,900,298       126%
+
+    Excel::Writer::XLSX + set_optimisation()
+         Rows  Time (s)    Memory (bytes)  Rel. Time
+          400      0.70            63,059       135%
+          800      1.10            63,059       110%
+         1600      2.30            63,062       111%
+         3200      4.44            63,062       107%
+         6400      8.91            63,062       109%
+        12800     17.69            63,065       108%
+        25600     35.15            63,065       101%
+        51200     70.67            63,065       101%
+
+    Spreadsheet::WriteExcel
+         Rows  Time (s)    Memory (bytes)
+          400      0.51         1,265,583
+          800      1.01         2,424,855
+         1600      2.07         4,743,400
+         3200      4.14         9,411,139
+         6400      8.20        18,766,915
+        12800     16.39        37,478,468
+        25600     34.72        75,044,423
+        51200     70.21       150,543,431
 
 
 =head1 DOWNLOADING
@@ -5895,49 +5946,25 @@ Depending on your requirements, background and general sensibilities you may pre
 
 This module is the precursor to Excel::Writer::XLSX and uses the same interface. It produces files in the Excel Biff xls format that was used in Excel versions 97-2003. These files can still be read by Excel 2007 but have some limitations in relation to the number of rows and columns that the format supports.
 
+L<Spreadsheet::WriteExcel>.
+
 =item * Win32::OLE module and office automation
 
-This requires a Windows platform and an installed copy of Excel. This is the most powerful and complete method for interfacing with Excel. See L<http://www.activestate.com/ASPN/Reference/Products/ActivePerl-5.6/faq/Windows/ActivePerl-Winfaq12.html> and L<http://www.activestate.com/ASPN/Reference/Products/ActivePerl-5.6/site/lib/Win32/OLE.html>. If your main platform is UNIX but you have the resources to set up a separate Win32/MSOffice server, you can convert office documents to text, postscript or PDF using Win32::OLE. For a demonstration of how to do this using Perl see Docserver: L<http://search.cpan.org/search?mode=module&query=docserver>.
+This requires a Windows platform and an installed copy of Excel. This is the most powerful and complete method for interfacing with Excel.
+
+L<Win32::OLE>
 
 =item * CSV, comma separated variables or text
 
-If the file extension is C<csv>, Excel will open and convert this format automatically. Generating a valid CSV file isn't as easy as it seems. Have a look at the DBD::RAM, DBD::CSV, Text::xSV and Text::CSV_XS modules.
+Excel will open and automatically convert files with a C<csv> extension.
+
+To create CSV files refer to the L<Text::CSV_XS> module.
+
 
 =item * DBI with DBD::ADO or DBD::ODBC
 
 Excel files contain an internal index table that allows them to act like a database file. Using one of the standard Perl database modules you can connect to an Excel file as a database.
 
-=item * DBD::Excel
-
-You can also access Spreadsheet::WriteExcel using the standard DBI interface via Takanori Kawai's DBD::Excel module L<http://search.cpan.org/dist/DBD-Excel>
-
-=item * Spreadsheet::WriteExcelXML
-
-This module allows you to create an Excel XML file using the same interface as Spreadsheet::WriteExcel. See: L<http://search.cpan.org/dist/Spreadsheet-WriteExcelXML>
-
-=item * Excel::Template
-
-This module allows you to create an Excel file from an XML template in a manner similar to HTML::Template. See L<http://search.cpan.org/dist/Excel-Template/>.
-
-=item * Spreadsheet::WriteExcel::FromXML
-
-This module allows you to turn a simple XML file into an Excel file using Spreadsheet::WriteExcel as a back-end. The format of the XML file is defined by a supplied DTD: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromXML>.
-
-=item * Spreadsheet::WriteExcel::Simple
-
-This provides an easier interface to Spreadsheet::WriteExcel: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-Simple>.
-
-=item * Spreadsheet::WriteExcel::FromDB
-
-This is a useful module for creating Excel files directly from a DB table: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromDB>.
-
-=item * HTML tables
-
-This is an easy way of adding formatting via a text based format.
-
-=item * XML or HTML
-
-The Excel XML and HTML file specification are available from L<http://msdn.microsoft.com/library/officedev/ofxml2k/ofxml2k.htm>.
 
 =back
 
@@ -5952,58 +5979,53 @@ To read data from Excel files try:
 
 =over 4
 
+=item * Spreadsheet::XLSX
+
+A module for reading formatted or unformatted data form XLSX files.
+
+L<Spreadsheet::XLSX>
+
+=item * SimpleXlsx
+
+A lightweight module for reading data from XLSX files.
+
+L<SimpleXlsx>
+
 =item * Spreadsheet::ParseExcel
 
-This uses the OLE::Storage-Lite module to extract data from an Excel file. L<http://search.cpan.org/dist/Spreadsheet-ParseExcel>.
+This module can read  data from an Excel XLS file but it doesn't support the XLSX format.
 
-=item * Spreadsheet::ParseExcel_XLHTML
-
-This module uses Spreadsheet::ParseExcel's interface but uses xlHtml (see below) to do the conversion: L<http://search.cpan.org/dist/Spreadsheet-ParseExcel_XLHTML>
-Spreadsheet::ParseExcel_XLHTML
-
-=item * xlHtml
-
-This is an open source "Excel to HTML Converter" C/C++ project at L<http://chicago.sourceforge.net/xlhtml/>.
-
-=item * DBD::Excel (reading)
-
-You can also access Spreadsheet::ParseExcel using the standard DBI interface via Takanori Kawai's DBD::Excel module L<http://search.cpan.org/dist/DBD-Excel>.
+L<Spreadsheet::ParseExcel>
 
 =item * Win32::OLE module and office automation (reading)
 
-See, the section L</WRITING EXCEL FILES>.
-
-=item * HTML tables (reading)
-
-If the files are saved from Excel in a HTML format the data can be accessed using HTML::TableExtract L<http://search.cpan.org/dist/HTML-TableExtract>.
+See above.
 
 =item * DBI with DBD::ADO or DBD::ODBC.
 
-See, the section L</WRITING EXCEL FILES>.
-
-=item * XML::Excel
-
-Converts Excel files to XML using Spreadsheet::ParseExcel L<http://search.cpan.org/dist/XML-Excel>.
-
-=item * OLE::Storage, aka LAOLA
-
-This is a Perl interface to OLE file formats. In particular, the distro contains an Excel to HTML converter called Herbert, L<http://user.cs.tu-berlin.de/~schwartz/pmh/>. This has been superseded by the Spreadsheet::ParseExcel module.
+See above.
 
 =back
 
 
 For other Perl-Excel modules try the following search: L<http://search.cpan.org/search?mode=module&query=excel>.
 
-If you wish to view Excel files on a UNIX/Linux platform check out the excellent Gnumeric spreadsheet application at L<http://www.gnome.org/projects/gnumeric/> or OpenOffice.org at L<http://www.openoffice.org/>.
-
-If you wish to view Excel files on a Windows platform which doesn't have Excel installed you can use the free Microsoft Excel Viewer L<http://office.microsoft.com/downloads/2000/xlviewer.aspx>.
-
-
-
 
 =head1 BUGS
 
-Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. Applying all available Service Packs to Excel should fix this.
+=over
+
+=item * Zero values for formulas results.
+
+Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. This is a bug in Excel since Excel::Writer::XLSX sets the required flag for recalculating formulas on opening.
+
+Applying all available Service Packs to Excel should fix this. Alternatively you can supply calculated values for all formulas that you write.
+
+=item * Memory usage is very high for large worksheets.
+
+If you run out of memory creating large worksheets use the C<set_optimization()> method. See L</SPEED AND MEMORY USAGE> for more information.
+
+=item * Perl packaging programs can't find chart modules.
 
 When using Excel::Writer::XLSX charts with Perl packagers such as PAR or Cava you should explicitly include the chart that you are trying to create in your C<use> statements. This isn't a bug as such but it might help someone from banging their head off a wall:
 
@@ -6012,9 +6034,15 @@ When using Excel::Writer::XLSX charts with Perl packagers such as PAR or Cava yo
     use Excel::Writer::XLSX::Chart::Column;
     ...
 
-Formulas are formulae.
+=back
+
 
 If you wish to submit a bug report run the C<bug_report.pl> program in the C<examples> directory of the distro.
+
+
+
+
+The bug tracker is on Github: L<https://github.com/jmcnamara/excel-writer-xlsx/issues>.
 
 
 =head1 TO DO
@@ -6050,23 +6078,6 @@ The Excel::Writer::XLSX source code in host on github: L<http://github.com/jmcna
 
 There is a Google group for discussing and asking questions about Excel::Writer::XLSX. This is a good place to search to see if your question has been asked before:  L<http://groups.google.com/group/spreadsheet-writeexcel>.
 
-=begin html
-
-<center>
-<table style="background-color: #fff; padding: 5px;" cellspacing="0">
-  <tr><td>
-  <img src="http://groups.google.com/intl/en/images/logos/groups_logo_sm.gif"
-         height="30" width="140" alt="Google Groups"/>
-  </td></tr>
-  <tr><td>
-  <a href="http://groups.google.com/group/spreadsheet-writeexcel">Excel::Writer::XLSX</a>
-  </td></tr>
-</table>
-</center>
-
-=end html
-
-
 
 
 
@@ -6083,17 +6094,7 @@ Spreadsheet::WriteExcel: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel>.
 
 Spreadsheet::ParseExcel: L<http://search.cpan.org/dist/Spreadsheet-ParseExcel>.
 
-Spreadsheet-WriteExcel-FromXML: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromXML>.
-
-Spreadsheet::WriteExcel::FromDB: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromDB>.
-
-Excel::Template: L<http://search.cpan.org/~rkinyon/Excel-Template/>.
-
-DateTime::Format::Excel: L<http://search.cpan.org/dist/DateTime-Format-Excel>.
-
-
-The csv2xls program that is part of Text::CSV_XS:
-L<http://search.cpan.org/~hmbrand/Text-CSV_XS/MANIFEST>.
+Spreadsheet::XLSX: L<http://search.cpan.org/dist/Spreadsheet-XLSX>.
 
 
 

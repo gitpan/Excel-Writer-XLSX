@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -151,7 +151,7 @@ sub new {
 
     $self->{prev_col} = -1;
 
-    $self->{_table} = [];
+    $self->{_table} = {};
     $self->{_merge} = [];
 
     $self->{_has_comments}     = 0;
@@ -174,6 +174,7 @@ sub new {
 
     $self->{_last_shape_id}          = 1;
     $self->{_rel_count}              = 0;
+    $self->{_hlink_count}            = 0;
     $self->{_hlink_refs}             = [];
     $self->{_external_hyper_links}   = [];
     $self->{_external_drawing_links} = [];
@@ -2062,7 +2063,7 @@ sub write_number {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $num, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $num, $xf ];
 
     return 0;
 }
@@ -2120,7 +2121,7 @@ sub write_string {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $index, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $index, $xf ];
 
     return $str_error;
 }
@@ -2269,7 +2270,7 @@ sub write_rich_string {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $index, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $index, $xf ];
 
     return 0;
 }
@@ -2319,7 +2320,7 @@ sub write_blank {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, undef, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, undef, $xf ];
 
     return 0;
 }
@@ -2372,7 +2373,7 @@ sub write_formula {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $formula, $xf, $value ];
+    $self->{_table}->{$row}->{$col} = [ $type, $formula, $xf, $value ];
 
     return 0;
 }
@@ -2442,8 +2443,19 @@ sub write_array_formula {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row1]->[$col1] =
+    $self->{_table}->{$row1}->{$col1} =
       [ $type, $formula, $xf, $range, $value ];
+
+
+    # Pad out the rest of the area with formatted zeroes.
+    if ( !$self->{_optimization} ) {
+        for my $row ( $row1 .. $row2 ) {
+            for my $col ( $col1 .. $col2 ) {
+                next if $row == $row1 and $col == $col1;
+                $self->write_number( $row, $col, 0, $xf );
+            }
+        }
+    }
 
     return 0;
 }
@@ -2486,7 +2498,8 @@ sub outline_settings {
 #         -1 : insufficient number of arguments
 #         -2 : row or column out of range
 #         -3 : long string truncated to 32767 chars
-#         -4 : url contains whitespace
+#         -4 : URL longer than 255 characters
+#         -5 : Exceeds limit of 65_530 urls per worksheet
 #
 sub write_url {
 
@@ -2556,12 +2569,8 @@ sub write_url {
     # different characteristics that we have to account for.
     if ( $link_type == 1 ) {
 
-        # Check for white space in url.
-        if ($url =~ /[\s\x00]/) {
-            carp "White space in url '$url' is not allowed by Excel";
-            return -4;
-
-        }
+        # Substiture white space in url.
+        $url =~ s/[\s\x00]/%20/;
 
         # Ordinary URL style external links don't have a "location" string.
         $str = undef;
@@ -2590,12 +2599,31 @@ sub write_url {
         $link_type = 1;
     }
 
+    # Excel limits escaped URL to 255 characters.
+    if ( length $url > 255 ) {
+        carp "Ignoring URL '$url' > 255 characters since it exceeds Excel's "
+          . "limit for URLS. See LIMITATIONS section of the "
+          . "Excel::Writer::XLSX documentation.";
+        return -4;
+    }
+
+    # Check the limit of URLS per worksheet.
+    $self->{_hlink_count}++;
+
+    if ( $self->{_hlink_count} > 65_530 ) {
+        carp "Ignoring URL '$url' since it exceeds Excel's limit of 65,530 "
+          . "URLS per worksheet. See LIMITATIONS section of the "
+          . "Excel::Writer::XLSX documentation.";
+        return -5;
+    }
+
+
     # Write previous row if in in-line string optimization mode.
     if ( $self->{_optimization} == 1 && $row > $self->{_previous_row}) {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] =
+    $self->{_table}->{$row}->{$col} =
 
       # 0      1       2    3           4     5     6
       [ $type, $index, $xf, $link_type, $url, $str, $tip ];
@@ -2650,7 +2678,7 @@ sub write_date_time {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $date_time, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $date_time, $xf ];
 
     return $str_error;
 }
@@ -4140,6 +4168,21 @@ sub _cell_to_rowcol {
 
 ###############################################################################
 #
+# _xl_rowcol_to_cell($row, $col)
+#
+# Optimised version of xl_rowcol_to_cell from Utility.pm for the inner loop
+# of write_cell().
+#
+
+our @col_names = ( 'A' .. 'XFD' );
+
+sub _xl_rowcol_to_cell {
+    return $col_names[ $_[1] ] . ( $_[0] + 1 );
+}
+
+
+###############################################################################
+#
 # _sort_pagebreaks()
 #
 # This is an internal method that is used to filter elements of the array of
@@ -4778,14 +4821,14 @@ sub _get_range_data {
     for my $row_num ( $row_start .. $row_end ) {
 
         # Store undef if row doesn't exist.
-        if ( !$self->{_table}->[$row_num] ) {
+        if ( ! exists $self->{_table}->{$row_num} ) {
             push @data, undef;
             next;
         }
 
         for my $col_num ( $col_start .. $col_end ) {
 
-            if ( my $cell = $self->{_table}->[$row_num]->[$col_num] ) {
+            if ( my $cell = $self->{_table}->{$row_num}->{$col_num} ) {
 
                 my $type  = $cell->[0];
                 my $token = $cell->[1];
@@ -6023,7 +6066,7 @@ sub _write_rows {
 
         # Skip row if it doesn't contain row formatting, cell data or a comment.
         if (   !$self->{_set_rows}->{$row_num}
-            && !$self->{_table}->[$row_num]
+            && !$self->{_table}->{$row_num}
             && !$self->{_comments}->{$row_num} )
         {
             next;
@@ -6033,7 +6076,7 @@ sub _write_rows {
         my $span       = $self->{_row_spans}->[$span_index];
 
         # Write the cells if the row contains data.
-        if ( my $row_ref = $self->{_table}->[$row_num] ) {
+        if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
             if ( !$self->{_set_rows}->{$row_num} ) {
                 $self->_write_row( $row_num, $span );
@@ -6045,7 +6088,7 @@ sub _write_rows {
 
 
             for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-                if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+                if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
                     $self->_write_cell( $row_num, $col_num, $col_ref );
                 }
             }
@@ -6087,14 +6130,14 @@ sub _write_single_row {
 
     # Skip row if it doesn't contain row formatting, cell data or a comment.
     if (   !$self->{_set_rows}->{$row_num}
-        && !$self->{_table}->[$row_num]
+        && !$self->{_table}->{$row_num}
         && !$self->{_comments}->{$row_num} )
     {
         return;
     }
 
     # Write the cells if the row contains data.
-    if ( my $row_ref = $self->{_table}->[$row_num] ) {
+    if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
         if ( !$self->{_set_rows}->{$row_num} ) {
             $self->_write_row( $row_num );
@@ -6105,7 +6148,7 @@ sub _write_single_row {
         }
 
         for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-            if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+            if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
                 $self->_write_cell( $row_num, $col_num, $col_ref );
             }
         }
@@ -6120,7 +6163,7 @@ sub _write_single_row {
     }
 
     # Reset table.
-    $self->{_table} = [];
+    $self->{_table} = {};
 
 }
 
@@ -6146,10 +6189,10 @@ sub _calculate_spans {
     for my $row_num ( $self->{_dim_rowmin} .. $self->{_dim_rowmax} ) {
 
         # Calculate spans for cell data.
-        if ( my $row_ref = $self->{_table}->[$row_num] ) {
+        if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
             for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-                if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+                if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
 
                     if ( !defined $span_min ) {
                         $span_min = $col_num;
@@ -6263,6 +6306,7 @@ sub _write_empty_row {
 }
 
 
+
 ###############################################################################
 #
 # _write_cell()
@@ -6298,7 +6342,7 @@ sub _write_cell {
          $xf_index = $xf->get_xf_index();
     }
 
-    my $range = xl_rowcol_to_cell( $row, $col );
+    my $range = _xl_rowcol_to_cell( $row, $col );
     my @attributes = ( 'r' => $range );
 
     # Add the cell format index.
@@ -6319,23 +6363,15 @@ sub _write_cell {
     if ( $type eq 'n' ) {
 
         # Write a number.
-        $self->{_writer}->startTag( 'c', @attributes );
-        $self->_write_cell_value( $token );
-        $self->{_writer}->endTag( 'c' );
+        $self->{_writer}->numberElement($token, @attributes);
     }
     elsif ( $type eq 's' ) {
 
         # Write a string.
         if ( $self->{_optimization} == 0 ) {
-            push @attributes, ( 't' => 's' );
-            $self->{_writer}->startTag( 'c', @attributes );
-            $self->_write_cell_value( $token );
-            $self->{_writer}->endTag( 'c' );
+            $self->{_writer}->stringElement($token, @attributes);
         }
         else {
-            push @attributes, ( 't' => 'inlineStr' );
-            $self->{_writer}->startTag( 'c', @attributes );
-            $self->{_writer}->startTag( 'is' );
 
             my $string = $token;
 
@@ -6345,32 +6381,39 @@ sub _write_cell {
 
             # Write any rich strings without further tags.
             if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
-                my $fh = $self->{_writer}->getOutput();
 
-                local $\ = undef;    # Protect print from -l on commandline.
-                print $fh $string;
+                $self->{_writer}->richInlineStr($string, @attributes );
             }
             else {
-                my @t_attributes;
 
                 # Add attribute to preserve leading or trailing whitespace.
+                my $preserve = 0;
                 if ( $string =~ /^\s/ || $string =~ /\s$/ ) {
-                    push @t_attributes, ( 'xml:space' => 'preserve' );
+                    $preserve = 1;
                 }
-                $self->{_writer}->dataElement( 't', $string, @t_attributes );
-            }
 
-            $self->{_writer}->endTag( 'is' );
-            $self->{_writer}->endTag( 'c' );
+                $self->{_writer}->inlineStr( $string, $preserve, @attributes );
+            }
         }
     }
     elsif ( $type eq 'f' ) {
 
         # Write a formula.
-        $self->{_writer}->startTag( 'c', @attributes );
-        $self->_write_cell_formula( $token );
-        $self->_write_cell_value( $cell->[3] || 0 );
-        $self->{_writer}->endTag( 'c' );
+        my $value = $cell->[3] || 0;
+
+        # Check if the formula value is a string.
+        if (   $value
+            && $value !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ )
+        {
+            push @attributes, ( 't' => 'str' );
+            $value =
+              Excel::Writer::XLSX::Package::XMLwriterSimple::_escape_xml_chars(
+                $value );
+        }
+
+
+        $self->{_writer}->formulaElement($token, $value, @attributes);
+
     }
     elsif ( $type eq 'a' ) {
 

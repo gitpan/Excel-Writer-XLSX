@@ -20,7 +20,7 @@ use Exporter;
 use Carp;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 #
 # NOTE: this module is a light weight re-implementation of XML::Writer. See
@@ -72,22 +72,42 @@ sub xmlDecl {
 #
 sub startTag {
 
-    my $self       = shift;
-    my $tag        = shift;
-    my @attributes = @_;
-    local $\ = undef;    # Protect print from -l on commandline.
+    my $self = shift;
+    my $tag  = shift;
 
-    print { $self->{_fh} } "<$tag";
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
 
-    while ( @attributes ) {
-        my $key   = shift @attributes;
-        my $value = shift @attributes;
-        $value = _escape_xml_chars( $value );
-
-        print { $self->{_fh} } qq( $key="$value");
+        $tag .= qq( $key="$value");
     }
 
-    print { $self->{_fh} } ">";
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<$tag>";
+}
+
+
+###############################################################################
+#
+# startTag()
+#
+# Write an XML start tag with optional encoded attributes.
+#
+sub startTagEncoded {
+
+    my $self = shift;
+    my $tag  = shift;
+
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
+        $value = _escape_xml_chars( $value );
+
+        $tag .= qq( $key="$value");
+    }
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<$tag>";
 }
 
 
@@ -115,23 +135,47 @@ sub endTag {
 #
 sub emptyTag {
 
-    my $self       = shift;
-    my $tag        = shift;
-    my @attributes = @_;
-    local $\ = undef;    # Protect print from -l on commandline.
+    my $self = shift;
+    my $tag  = shift;
 
-    print { $self->{_fh} } "<$tag";
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
 
-    while ( @attributes ) {
-        my $key   = shift @attributes;
-        my $value = shift @attributes;
-        $value = _escape_xml_chars( $value );
-
-        print { $self->{_fh} } qq( $key="$value");
+        $tag .= qq( $key="$value");
     }
 
+    local $\ = undef;    # Protect print from -l on commandline.
+
     # Note extra space before closing tag like XML::Writer.
-    print { $self->{_fh} } " />";
+    print { $self->{_fh} } "<$tag />";
+
+}
+
+
+###############################################################################
+#
+# emptyTagEncoded()
+#
+# Write an empty XML tag with optional encoded attributes.
+#
+sub emptyTagEncoded {
+
+    my $self = shift;
+    my $tag  = shift;
+
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
+        $value = _escape_xml_chars( $value );
+
+        $tag .= qq( $key="$value");
+    }
+
+    local $\ = undef;    # Protect print from -l on commandline.
+
+    # Note extra space before closing tag like XML::Writer.
+    print { $self->{_fh} } "<$tag />";
 
 }
 
@@ -141,31 +185,226 @@ sub emptyTag {
 # dataElement()
 #
 # Write an XML element containing data with optional attributes.
-# XML characters in the data are escaped.
+# XML characters in the data are encoded.
 #
 sub dataElement {
 
-    my $self       = shift;
-    my $tag        = shift;
-    my $data       = shift;
-    my @attributes = @_;
-    local $\ = undef;    # Protect print from -l on commandline.
+    my $self    = shift;
+    my $tag     = shift;
+    my $data    = shift;
+    my $end_tag = $tag;
 
-    print { $self->{_fh} } "<$tag";
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
 
-    while ( @attributes ) {
-        my $key   = shift @attributes;
-        my $value = shift @attributes;
-        $value = _escape_xml_chars( $value );
-
-        print { $self->{_fh} } qq( $key="$value");
+        $tag .= qq( $key="$value");
     }
 
     $data = _escape_xml_chars( $data );
 
-    print { $self->{_fh} } ">";
-    print { $self->{_fh} } $data;
-    print { $self->{_fh} } "</$tag>";
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<$tag>$data</$end_tag>";
+}
+
+
+###############################################################################
+#
+# dataElementEncoded()
+#
+# Write an XML element containing data with optional encoded attributes.
+# XML characters in the data are encoded.
+#
+sub dataElementEncoded {
+
+    my $self    = shift;
+    my $tag     = shift;
+    my $data    = shift;
+    my $end_tag = $tag;
+
+    while ( @_ ) {
+        my $key   = shift @_;
+        my $value = shift @_;
+        $value = _escape_xml_chars( $value );
+
+        $tag .= qq( $key="$value");
+    }
+
+    $data = _escape_xml_chars( $data );
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<$tag>$data</$end_tag>";
+}
+
+
+###############################################################################
+#
+# stringElement()
+#
+# Optimised tag writer for <c> cell string elements in the inner loop.
+#
+sub stringElement {
+
+    my $self  = shift;
+    my $index = shift;
+    my $attr  = '';
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<c$attr t=\"s\"><v>$index</v></c>";
+}
+
+
+###############################################################################
+#
+# siElement()
+#
+# Optimised tag writer for shared strings <si> elements.
+#
+sub siElement {
+
+    my $self  = shift;
+    my $string = shift;
+    my $attr  = '';
+
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    $string = _escape_xml_chars( $string );
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<si><t$attr>$string</t></si>";
+}
+
+
+
+
+###############################################################################
+#
+# siRichElement()
+#
+# Optimised tag writer for shared strings <si> rich string elements.
+#
+sub siRichElement {
+
+    my $self  = shift;
+    my $string = shift;
+
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<si>$string</si>";
+}
+
+
+###############################################################################
+#
+# numberElement()
+#
+# Optimised tag writer for <c> cell number elements in the inner loop.
+#
+sub numberElement {
+
+    my $self  = shift;
+    my $index = shift;
+    my $attr  = '';
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<c$attr><v>$index</v></c>";
+}
+
+
+###############################################################################
+#
+# formulaElement()
+#
+# Optimised tag writer for <c> cell formula elements in the inner loop.
+#
+sub formulaElement {
+
+    my $self    = shift;
+    my $formula = shift;
+    my $value   = shift;
+    my $attr    = '';
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    $formula = _escape_xml_chars( $formula );
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<c$attr><f>$formula</f><v>$value</v></c>";
+}
+
+
+###############################################################################
+#
+# inlineStr()
+#
+# Optimised tag writer for inlineStr cell elements in the inner loop.
+#
+sub inlineStr {
+
+    my $self     = shift;
+    my $string   = shift;
+    my $preserve = shift;
+    my $attr     = '';
+    my $t_attr   = '';
+
+    # Set the <t> attribute to preserve whitespace.
+    $t_attr = ' xml:space="preserve"' if $preserve;
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    $string = _escape_xml_chars( $string );
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} }
+      "<c$attr t=\"inlineStr\"><is><t$t_attr>$string</t></is></c>";
+}
+
+
+###############################################################################
+#
+# richInlineStr()
+#
+# Optimised tag writer for rich inlineStr cell elements in the inner loop.
+#
+sub richInlineStr {
+
+    my $self  = shift;
+    my $string = shift;
+    my $attr  = '';
+
+    while ( @_ ) {
+        my $key   = shift;
+        my $value = shift;
+        $attr .= qq( $key="$value");
+    }
+
+    local $\ = undef;    # Protect print from -l on commandline.
+    print { $self->{_fh} } "<c$attr t=\"inlineStr\"><is>$string</is></c>";
 }
 
 
@@ -224,15 +463,14 @@ sub getOutput {
 #
 sub _escape_xml_chars {
 
-    my $str = defined $_[0] ? $_[0] : '';
+    my $str = $_[0];
 
-    return $str if $str !~ m/[&<>"]/;
+    return $str if $str !~ m/[&<>]/;
 
     for ( $str ) {
         s/&/&amp;/g;
         s/</&lt;/g;
         s/>/&gt;/g;
-        s/"/&quot;/g;
     }
 
     return $str;

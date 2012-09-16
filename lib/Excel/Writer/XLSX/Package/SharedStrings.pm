@@ -21,7 +21,7 @@ use Encode;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -207,25 +207,19 @@ sub _write_si {
         push @attributes, ( 'xml:space' => 'preserve' );
     }
 
-    $self->{_writer}->startTag( 'si' );
 
     # Write any rich strings without further tags.
     if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
-        my $fh = $self->{_writer}->getOutput();
 
         # Prevent utf8 strings from getting double encoded.
         $string = decode_utf8( $string );
 
-        # Protect print from -l on commandline.
-        local $\ = undef;
-
-        print $fh $string;
+        $self->{_writer}->siRichElement( $string );
     }
     else {
-        $self->{_writer}->dataElement( 't', $string, @attributes );
+        $self->{_writer}->siElement( $string, @attributes );
     }
 
-    $self->{_writer}->endTag( 'si' );
 }
 
 

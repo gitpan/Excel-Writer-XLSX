@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -1554,8 +1554,12 @@ sub _add_chart_data {
             # Skip if we couldn't parse the formula.
             next RANGE if !defined $sheetname;
 
-            # Skip if the name is unknown. Probably should throw exception.
-            next RANGE if !exists $worksheets{$sheetname};
+            # Die if the name is unknown since it indicates a user error in
+            # a chart series formula.
+            if ( !exists $worksheets{$sheetname} ) {
+                die "Unknown worksheet reference '$sheetname' in range "
+                  . "'$range' passed to add_series().\n";
+            }
 
             # Find the worksheet object based on the sheet name.
             my $worksheet = $worksheets{$sheetname};
@@ -2124,7 +2128,7 @@ sub _write_sheet {
     push @attributes, ( 'r:id' => $r_id );
 
 
-    $self->{_writer}->emptyTag( 'sheet', @attributes );
+    $self->{_writer}->emptyTagEncoded( 'sheet', @attributes );
 }
 
 

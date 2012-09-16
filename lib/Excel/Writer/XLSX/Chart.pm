@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -3186,9 +3186,18 @@ sub _write_sp_pr {
 
     $self->{_writer}->startTag( 'c:spPr' );
 
-    # Write the a:solidFill element for solid charts such as pie and bar.
+    # Write the fill elements for solid charts such as pie and bar.
     if ( $series->{_fill}->{_defined} ) {
-        $self->_write_a_solid_fill( $series->{_fill} );
+
+        if ( $series->{_fill}->{none} ) {
+
+            # Write the a:noFill element.
+            $self->_write_a_no_fill();
+        }
+        else {
+            # Write the a:solidFill element.
+            $self->_write_a_solid_fill( $series->{_fill} );
+        }
     }
 
     # Write the a:ln element.
@@ -3914,11 +3923,35 @@ Creates an Scatter style chart. See L<Excel::Writer::XLSX::Chart::Scatter>.
 
 Creates an Stock style chart. See L<Excel::Writer::XLSX::Chart::Stock>.
 
-=item * C<...>
+=back
+
+Chart subtypes are also supported in some cases:
+
+    $workbook->add_chart( type => 'bar', subtype => 'stacked' );
+
+The currently available subtypes are:
+
+    area
+        stacked
+        percent_stacked
+
+    bar
+        stacked
+        percent_stacked
+
+    column
+        stacked
+        percent_stacked
+
+    scatter
+        straight_with_markers
+        straight
+        smooth_with_markers
+        smooth
+
+
 
 More charts and sub-types will be supported in time. See the L</TODO> section.
-
-=back
 
 
 =head1 CHART METHODS
