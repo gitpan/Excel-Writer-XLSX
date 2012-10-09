@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 our $schema_root     = 'http://schemas.openxmlformats.org';
 our $package_schema  = $schema_root . '/package/2006/relationships';
@@ -42,11 +42,11 @@ our $document_schema = $schema_root . '/officeDocument/2006/relationships';
 sub new {
 
     my $class = shift;
-    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
+    my $fh    = shift;
+    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
-    $self->{_writer} = undef;
-    $self->{_rels}   = [];
-    $self->{_id}     = 1;
+    $self->{_rels} = [];
+    $self->{_id}   = 1;
 
     bless $self, $class;
 
@@ -64,9 +64,7 @@ sub _assemble_xml_file {
 
     my $self = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
     $self->_write_relationships();
 }
 
@@ -109,7 +107,6 @@ sub _add_package_relationship {
 }
 
 
-
 ###############################################################################
 #
 # _add_worksheet_relationship()
@@ -128,7 +125,6 @@ sub _add_worksheet_relationship {
 
     push @{ $self->{_rels} }, [ $type, $target, $target_mode ];
 }
-
 
 
 ###############################################################################
@@ -157,17 +153,16 @@ sub _write_relationships {
 
     my @attributes = ( 'xmlns' => $package_schema, );
 
-    $self->{_writer}->startTag( 'Relationships', @attributes );
+    $self->xml_start_tag( 'Relationships', @attributes );
 
     for my $rel ( @{ $self->{_rels} } ) {
         $self->_write_relationship( @$rel );
     }
 
-    $self->{_writer}->endTag( 'Relationships' );
+    $self->xml_end_tag( 'Relationships' );
 
-    # Close the XM writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -192,7 +187,7 @@ sub _write_relationship {
 
     push @attributes, ( 'TargetMode' => $target_mode ) if $target_mode;
 
-    $self->{_writer}->emptyTag( 'Relationship', @attributes );
+    $self->xml_encoded_empty_tag( 'Relationship', @attributes );
 }
 
 

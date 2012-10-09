@@ -20,7 +20,7 @@ use Exporter;
 use Excel::Writer::XLSX::Worksheet;
 
 our @ISA     = qw(Excel::Writer::XLSX::Worksheet);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -64,9 +64,7 @@ sub _assemble_xml_file {
 
     my $self = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
 
     # Write the root chartsheet element.
     $self->_write_chartsheet();
@@ -96,11 +94,10 @@ sub _assemble_xml_file {
     $self->_write_drawings();
 
     # Close the worksheet tag.
-    $self->{_writer}->endTag( 'chartsheet' );
+    $self->xml_end_tag( 'chartsheet' );
 
-    # Close the XML writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -209,7 +206,7 @@ sub _write_chartsheet {
         'xmlns:r' => $xmlns_r,
     );
 
-    $self->{_writer}->startTag( 'chartsheet', @attributes );
+    $self->xml_start_tag( 'chartsheet', @attributes );
 }
 
 
@@ -228,13 +225,13 @@ sub _write_sheet_pr {
     push @attributes, ( 'filterMode' => 1 ) if $self->{_filter_on};
 
     if ( $self->{_fit_page} || $self->{_tab_color} ) {
-        $self->{_writer}->startTag( 'sheetPr', @attributes );
+        $self->xml_start_tag( 'sheetPr', @attributes );
         $self->_write_tab_color();
         $self->_write_page_set_up_pr();
-        $self->{_writer}->endTag( 'sheetPr' );
+        $self->xml_end_tag( 'sheetPr' );
     }
     else {
-        $self->{_writer}->emptyTag( 'sheetPr', @attributes );
+        $self->xml_empty_tag( 'sheetPr', @attributes );
     }
 }
 

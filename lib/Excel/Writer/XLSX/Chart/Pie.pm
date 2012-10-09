@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -68,7 +68,7 @@ sub _write_pie_chart {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'c:pieChart' );
+    $self->xml_start_tag( 'c:pieChart' );
 
     # Write the c:varyColors element.
     $self->_write_vary_colors();
@@ -79,7 +79,7 @@ sub _write_pie_chart {
     # Write the c:firstSliceAng element.
     $self->_write_first_slice_ang();
 
-    $self->{_writer}->endTag( 'c:pieChart' );
+    $self->xml_end_tag( 'c:pieChart' );
 }
 
 
@@ -96,7 +96,7 @@ sub _write_plot_area {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'c:plotArea' );
+    $self->xml_start_tag( 'c:plotArea' );
 
     # Write the c:layout element.
     $self->_write_layout();
@@ -104,7 +104,7 @@ sub _write_plot_area {
     # Write the subclass chart type element.
     $self->_write_chart_type();
 
-    $self->{_writer}->endTag( 'c:plotArea' );
+    $self->xml_end_tag( 'c:plotArea' );
 }
 
 
@@ -138,7 +138,7 @@ sub _write_legend {
 
     $position = $allowed{$position};
 
-    $self->{_writer}->startTag( 'c:legend' );
+    $self->xml_start_tag( 'c:legend' );
 
     # Write the c:legendPos element.
     $self->_write_legend_pos( $position );
@@ -152,7 +152,7 @@ sub _write_legend {
     # Write the c:txPr element. Over-ridden.
     $self->_write_tx_pr_legend();
 
-    $self->{_writer}->endTag( 'c:legend' );
+    $self->xml_end_tag( 'c:legend' );
 }
 
 
@@ -167,7 +167,7 @@ sub _write_tx_pr_legend {
     my $self  = shift;
     my $horiz = 0;
 
-    $self->{_writer}->startTag( 'c:txPr' );
+    $self->xml_start_tag( 'c:txPr' );
 
     # Write the a:bodyPr element.
     $self->_write_a_body_pr( $horiz );
@@ -178,7 +178,7 @@ sub _write_tx_pr_legend {
     # Write the a:p element.
     $self->_write_a_p_legend();
 
-    $self->{_writer}->endTag( 'c:txPr' );
+    $self->xml_end_tag( 'c:txPr' );
 }
 
 
@@ -193,7 +193,7 @@ sub _write_a_p_legend {
     my $self  = shift;
     my $title = shift;
 
-    $self->{_writer}->startTag( 'a:p' );
+    $self->xml_start_tag( 'a:p' );
 
     # Write the a:pPr element.
     $self->_write_a_p_pr_legend();
@@ -201,7 +201,7 @@ sub _write_a_p_legend {
     # Write the a:endParaRPr element.
     $self->_write_a_end_para_rpr();
 
-    $self->{_writer}->endTag( 'a:p' );
+    $self->xml_end_tag( 'a:p' );
 }
 
 
@@ -218,12 +218,12 @@ sub _write_a_p_pr_legend {
 
     my @attributes = ( 'rtl' => $rtl );
 
-    $self->{_writer}->startTag( 'a:pPr', @attributes );
+    $self->xml_start_tag( 'a:pPr', @attributes );
 
     # Write the a:defRPr element.
     $self->_write_a_def_rpr();
 
-    $self->{_writer}->endTag( 'a:pPr' );
+    $self->xml_end_tag( 'a:pPr' );
 }
 
 
@@ -240,7 +240,7 @@ sub _write_vary_colors {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'c:varyColors', @attributes );
+    $self->xml_empty_tag( 'c:varyColors', @attributes );
 }
 
 
@@ -257,7 +257,7 @@ sub _write_first_slice_ang {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'c:firstSliceAng', @attributes );
+    $self->xml_empty_tag( 'c:firstSliceAng', @attributes );
 }
 
 1;
@@ -316,7 +316,25 @@ These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class sp
 
 =head1 Pie Chart Methods
 
-There aren't currently any pie chart specific methods. See the TODO section of L<Excel::Writer::XLSX::Chart>.
+It is possible to define chart colors for most types of Excel::Writer::XLSX charts via the add_series() method.
+
+However, Pie charts are a special case since each segment is a actually a point and there isn't, currently, any way to define colors for individual points in Excel::Writer::XLSX.
+
+Pie charts support leader lines:
+
+    $chart->add_series(
+        name        => 'Pie sales data',
+        categories  => [ 'Sheet1', 1, 3, 0, 0 ],
+        values      => [ 'Sheet1', 1, 3, 1, 1 ],
+        data_labels => {
+            series_name  => 1,
+            percentage   => 1,
+            leader_lines => 1,
+            position     => 'outside_end'
+        },
+    );
+
+Note: Even when leader lines are turned on they aren't automatically visible in Excel or Excel::Writer::XLSX. Due to an Excel limitation (or design) leader lines only appear if the data label is moved manually or if the data labels are very close and need to be adjusted automatically.
 
 A Pie chart doesn't have an X or Y axis so the following common chart methods are ignored.
 
@@ -388,4 +406,3 @@ John McNamara jmcnamara@cpan.org
 Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
-

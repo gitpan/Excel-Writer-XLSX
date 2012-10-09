@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -39,10 +39,9 @@ our $VERSION = '0.51';
 sub new {
 
     my $class = shift;
+    my $fh    = shift;
+    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
-    my $self = Excel::Writer::XLSX::Package::XMLwriter->new();
-
-    $self->{_writer}           = undef;
     $self->{_xf_formats}       = undef;
     $self->{_palette}          = [];
     $self->{_font_count}       = 0;
@@ -68,9 +67,7 @@ sub _assemble_xml_file {
 
     my $self = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
 
     # Add the style sheet.
     $self->_write_style_sheet();
@@ -106,11 +103,10 @@ sub _assemble_xml_file {
     $self->_write_colors();
 
     # Close the style sheet tag.
-    $self->{_writer}->endTag( 'styleSheet' );
+    $self->xml_end_tag( 'styleSheet' );
 
-    # Close the XML writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -190,7 +186,7 @@ sub _write_style_sheet {
 
     my @attributes = ( 'xmlns' => $xmlns );
 
-    $self->{_writer}->startTag( 'styleSheet', @attributes );
+    $self->xml_start_tag( 'styleSheet', @attributes );
 }
 
 
@@ -209,7 +205,7 @@ sub _write_num_fmts {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'numFmts', @attributes );
+    $self->xml_start_tag( 'numFmts', @attributes );
 
     # Write the numFmts elements.
     for my $format ( @{ $self->{_xf_formats} } ) {
@@ -220,7 +216,7 @@ sub _write_num_fmts {
             $format->{_num_format} );
     }
 
-    $self->{_writer}->endTag( 'numFmts' );
+    $self->xml_end_tag( 'numFmts' );
 }
 
 
@@ -290,7 +286,7 @@ sub _write_num_fmt {
         'formatCode' => $format_code,
     );
 
-    $self->{_writer}->emptyTag( 'numFmt', @attributes );
+    $self->xml_empty_tag( 'numFmt', @attributes );
 }
 
 
@@ -307,14 +303,14 @@ sub _write_fonts {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'fonts', @attributes );
+    $self->xml_start_tag( 'fonts', @attributes );
 
     # Write the font elements for format objects that have them.
     for my $format ( @{ $self->{_xf_formats} } ) {
         $self->_write_font( $format ) if $format->{_has_font};
     }
 
-    $self->{_writer}->endTag( 'fonts' );
+    $self->xml_end_tag( 'fonts' );
 }
 
 
@@ -330,17 +326,17 @@ sub _write_font {
     my $format     = shift;
     my $dxf_format = shift;
 
-    $self->{_writer}->startTag( 'font' );
+    $self->xml_start_tag( 'font' );
 
     # The condense and extend elements are mainly used in dxf formats.
     $self->_write_condense() if $format->{_font_condense};
     $self->_write_extend()   if $format->{_font_extend};
 
-    $self->{_writer}->emptyTag( 'b' )       if $format->{_bold};
-    $self->{_writer}->emptyTag( 'i' )       if $format->{_italic};
-    $self->{_writer}->emptyTag( 'strike' )  if $format->{_font_strikeout};
-    $self->{_writer}->emptyTag( 'outline' ) if $format->{_font_outline};
-    $self->{_writer}->emptyTag( 'shadow' )  if $format->{_font_shadow};
+    $self->xml_empty_tag( 'b' )       if $format->{_bold};
+    $self->xml_empty_tag( 'i' )       if $format->{_italic};
+    $self->xml_empty_tag( 'strike' )  if $format->{_font_strikeout};
+    $self->xml_empty_tag( 'outline' ) if $format->{_font_outline};
+    $self->xml_empty_tag( 'shadow' )  if $format->{_font_shadow};
 
     # Handle the underline variants.
     $self->_write_underline( $format->{_underline} ) if $format->{_underline};
@@ -348,8 +344,8 @@ sub _write_font {
     $self->_write_vert_align( 'superscript' ) if $format->{_font_script} == 1;
     $self->_write_vert_align( 'subscript' )   if $format->{_font_script} == 2;
 
-    if (!$dxf_format) {
-        $self->{_writer}->emptyTag( 'sz', 'val', $format->{_size} );
+    if ( !$dxf_format ) {
+        $self->xml_empty_tag( 'sz', 'val', $format->{_size} );
     }
 
     if ( my $theme = $format->{_theme} ) {
@@ -363,16 +359,16 @@ sub _write_font {
 
         $self->_write_color( 'rgb' => $color );
     }
-    elsif (!$dxf_format) {
+    elsif ( !$dxf_format ) {
         $self->_write_color( 'theme' => 1 );
     }
 
     if ( !$dxf_format ) {
-        $self->{_writer}->emptyTag( 'name',   'val', $format->{_font} );
-        $self->{_writer}->emptyTag( 'family', 'val', $format->{_font_family} );
+        $self->xml_empty_tag( 'name',   'val', $format->{_font} );
+        $self->xml_empty_tag( 'family', 'val', $format->{_font_family} );
 
         if ( $format->{_font} eq 'Calibri' && !$format->{_hyperlink} ) {
-            $self->{_writer}->emptyTag(
+            $self->xml_empty_tag(
 
                 'scheme',
                 'val' => $format->{_font_scheme}
@@ -380,7 +376,7 @@ sub _write_font {
         }
     }
 
-    $self->{_writer}->endTag( 'font' );
+    $self->xml_end_tag( 'font' );
 }
 
 
@@ -410,7 +406,7 @@ sub _write_underline {
         @attributes = ();    # Default to single underline.
     }
 
-    $self->{_writer}->emptyTag( 'u', @attributes );
+    $self->xml_empty_tag( 'u', @attributes );
 
 }
 
@@ -428,7 +424,7 @@ sub _write_vert_align {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'vertAlign', @attributes );
+    $self->xml_empty_tag( 'vertAlign', @attributes );
 }
 
 
@@ -446,7 +442,7 @@ sub _write_color {
 
     my @attributes = ( $name => $value );
 
-    $self->{_writer}->emptyTag( 'color', @attributes );
+    $self->xml_empty_tag( 'color', @attributes );
 }
 
 
@@ -463,7 +459,7 @@ sub _write_fills {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'fills', @attributes );
+    $self->xml_start_tag( 'fills', @attributes );
 
     # Write the default fill element.
     $self->_write_default_fill( 'none' );
@@ -474,7 +470,7 @@ sub _write_fills {
         $self->_write_fill( $format ) if $format->{_has_fill};
     }
 
-    $self->{_writer}->endTag( 'fills' );
+    $self->xml_end_tag( 'fills' );
 }
 
 
@@ -489,11 +485,11 @@ sub _write_default_fill {
     my $self         = shift;
     my $pattern_type = shift;
 
-    $self->{_writer}->startTag( 'fill' );
+    $self->xml_start_tag( 'fill' );
 
-    $self->{_writer}->emptyTag( 'patternFill', 'patternType', $pattern_type );
+    $self->xml_empty_tag( 'patternFill', 'patternType', $pattern_type );
 
-    $self->{_writer}->endTag( 'fill' );
+    $self->xml_end_tag( 'fill' );
 }
 
 
@@ -544,14 +540,14 @@ sub _write_fill {
     );
 
 
-    $self->{_writer}->startTag( 'fill' );
+    $self->xml_start_tag( 'fill' );
 
     # The "none" pattern is handled differently for dxf formats.
     if ( $dxf_format && $format->{_pattern} <= 1 ) {
-        $self->{_writer}->startTag( 'patternFill' );
+        $self->xml_start_tag( 'patternFill' );
     }
     else {
-        $self->{_writer}->startTag(
+        $self->xml_start_tag(
             'patternFill',
             'patternType',
             $patterns[ $format->{_pattern} ]
@@ -561,21 +557,21 @@ sub _write_fill {
 
     if ( $fg_color ) {
         $fg_color = $self->_get_palette_color( $fg_color );
-        $self->{_writer}->emptyTag( 'fgColor', 'rgb' => $fg_color );
+        $self->xml_empty_tag( 'fgColor', 'rgb' => $fg_color );
     }
 
     if ( $bg_color ) {
         $bg_color = $self->_get_palette_color( $bg_color );
-        $self->{_writer}->emptyTag( 'bgColor', 'rgb' => $bg_color );
+        $self->xml_empty_tag( 'bgColor', 'rgb' => $bg_color );
     }
     else {
         if ( !$dxf_format ) {
-            $self->{_writer}->emptyTag( 'bgColor', 'indexed' => 64 );
+            $self->xml_empty_tag( 'bgColor', 'indexed' => 64 );
         }
     }
 
-    $self->{_writer}->endTag( 'patternFill' );
-    $self->{_writer}->endTag( 'fill' );
+    $self->xml_end_tag( 'patternFill' );
+    $self->xml_end_tag( 'fill' );
 }
 
 
@@ -592,14 +588,14 @@ sub _write_borders {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'borders', @attributes );
+    $self->xml_start_tag( 'borders', @attributes );
 
     # Write the border elements for format objects that have them.
     for my $format ( @{ $self->{_xf_formats} } ) {
         $self->_write_border( $format ) if $format->{_has_border};
     }
 
-    $self->{_writer}->endTag( 'borders' );
+    $self->xml_end_tag( 'borders' );
 }
 
 
@@ -618,14 +614,14 @@ sub _write_border {
 
 
     # Diagonal borders add attributes to the <border> element.
-    if ($format->{_diag_type} == 1) {
+    if ( $format->{_diag_type} == 1 ) {
         push @attributes, ( diagonalUp => 1 );
     }
-    elsif ($format->{_diag_type} == 2) {
+    elsif ( $format->{_diag_type} == 2 ) {
         push @attributes, ( diagonalDown => 1 );
     }
-    elsif ($format->{_diag_type} == 3) {
-        push @attributes, ( diagonalUp => 1 );
+    elsif ( $format->{_diag_type} == 3 ) {
+        push @attributes, ( diagonalUp   => 1 );
         push @attributes, ( diagonalDown => 1 );
     }
 
@@ -635,7 +631,7 @@ sub _write_border {
     }
 
     # Write the start border tag.
-    $self->{_writer}->startTag( 'border', @attributes );
+    $self->xml_start_tag( 'border', @attributes );
 
     # Write the <border> sub elements.
     $self->_write_sub_border(
@@ -681,7 +677,7 @@ sub _write_border {
         $self->_write_sub_border( 'horizontal' );
     }
 
-    $self->{_writer}->endTag( 'border' );
+    $self->xml_end_tag( 'border' );
 }
 
 
@@ -699,8 +695,8 @@ sub _write_sub_border {
     my $color = shift;
     my @attributes;
 
-    if (!$style) {
-        $self->{_writer}->emptyTag( $type );
+    if ( !$style ) {
+        $self->xml_empty_tag( $type );
         return;
     }
 
@@ -725,17 +721,17 @@ sub _write_sub_border {
 
     push @attributes, ( style => $border_styles[$style] );
 
-    $self->{_writer}->startTag( $type, @attributes );
+    $self->xml_start_tag( $type, @attributes );
 
     if ( $color ) {
         $color = $self->_get_palette_color( $color );
-        $self->{_writer}->emptyTag( 'color', 'rgb' => $color );
+        $self->xml_empty_tag( 'color', 'rgb' => $color );
     }
     else {
-        $self->{_writer}->emptyTag( 'color', 'auto' => 1 );
+        $self->xml_empty_tag( 'color', 'auto' => 1 );
     }
 
-    $self->{_writer}->endTag( $type );
+    $self->xml_end_tag( $type );
 }
 
 
@@ -752,12 +748,12 @@ sub _write_cell_style_xfs {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'cellStyleXfs', @attributes );
+    $self->xml_start_tag( 'cellStyleXfs', @attributes );
 
     # Write the style_xf element.
     $self->_write_style_xf();
 
-    $self->{_writer}->endTag( 'cellStyleXfs' );
+    $self->xml_end_tag( 'cellStyleXfs' );
 }
 
 
@@ -783,14 +779,14 @@ sub _write_cell_xfs {
     my $count = scalar @formats;
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'cellXfs', @attributes );
+    $self->xml_start_tag( 'cellXfs', @attributes );
 
     # Write the xf elements.
     for my $format ( @formats ) {
         $self->_write_xf( $format );
     }
 
-    $self->{_writer}->endTag( 'cellXfs' );
+    $self->xml_end_tag( 'cellXfs' );
 }
 
 
@@ -815,7 +811,7 @@ sub _write_style_xf {
         'borderId' => $border_id,
     );
 
-    $self->{_writer}->emptyTag( 'xf', @attributes );
+    $self->xml_empty_tag( 'xf', @attributes );
 }
 
 
@@ -886,13 +882,13 @@ sub _write_xf {
 
     # Write XF with sub-elements if required.
     if ( $has_align || $has_protect ) {
-        $self->{_writer}->startTag( 'xf', @attributes );
-        $self->{_writer}->emptyTag( 'alignment',  @align )      if $has_align;
-        $self->{_writer}->emptyTag( 'protection', @protection ) if $has_protect;
-        $self->{_writer}->endTag( 'xf' );
+        $self->xml_start_tag( 'xf', @attributes );
+        $self->xml_empty_tag( 'alignment',  @align )      if $has_align;
+        $self->xml_empty_tag( 'protection', @protection ) if $has_protect;
+        $self->xml_end_tag( 'xf' );
     }
     else {
-        $self->{_writer}->emptyTag( 'xf', @attributes );
+        $self->xml_empty_tag( 'xf', @attributes );
     }
 }
 
@@ -910,12 +906,12 @@ sub _write_cell_styles {
 
     my @attributes = ( 'count' => $count );
 
-    $self->{_writer}->startTag( 'cellStyles', @attributes );
+    $self->xml_start_tag( 'cellStyles', @attributes );
 
     # Write the cellStyle element.
     $self->_write_cell_style();
 
-    $self->{_writer}->endTag( 'cellStyles' );
+    $self->xml_end_tag( 'cellStyles' );
 }
 
 
@@ -938,7 +934,7 @@ sub _write_cell_style {
         'builtinId' => $builtin_id,
     );
 
-    $self->{_writer}->emptyTag( 'cellStyle', @attributes );
+    $self->xml_empty_tag( 'cellStyle', @attributes );
 }
 
 
@@ -950,7 +946,7 @@ sub _write_cell_style {
 #
 sub _write_dxfs {
 
-    my $self  = shift;
+    my $self    = shift;
     my $formats = $self->{_dxf_formats};
 
     my $count = scalar @{$formats};
@@ -958,27 +954,27 @@ sub _write_dxfs {
     my @attributes = ( 'count' => $count );
 
     if ( $count ) {
-        $self->{_writer}->startTag( 'dxfs', @attributes );
+        $self->xml_start_tag( 'dxfs', @attributes );
 
         # Write the font elements for format objects that have them.
         for my $format ( @{ $self->{_dxf_formats} } ) {
-            $self->{_writer}->startTag( 'dxf' );
-            $self->_write_font( $format, 1 )    if $format->{_has_dxf_font};
+            $self->xml_start_tag( 'dxf' );
+            $self->_write_font( $format, 1 ) if $format->{_has_dxf_font};
 
             if ( $format->{_num_format_index} ) {
                 $self->_write_num_fmt( $format->{_num_format_index},
                     $format->{_num_format} );
             }
 
-            $self->_write_fill( $format, 1 )    if $format->{_has_dxf_fill};
-            $self->_write_border( $format, 1 )  if $format->{_has_dxf_border};
-            $self->{_writer}->endTag( 'dxf' );
+            $self->_write_fill( $format, 1 ) if $format->{_has_dxf_fill};
+            $self->_write_border( $format, 1 ) if $format->{_has_dxf_border};
+            $self->xml_end_tag( 'dxf' );
         }
 
-        $self->{_writer}->endTag( 'dxfs' );
+        $self->xml_end_tag( 'dxfs' );
     }
     else {
-        $self->{_writer}->emptyTag( 'dxfs', @attributes );
+        $self->xml_empty_tag( 'dxfs', @attributes );
     }
 
 }
@@ -1003,7 +999,7 @@ sub _write_table_styles {
         'defaultPivotStyle' => $default_pivot_style,
     );
 
-    $self->{_writer}->emptyTag( 'tableStyles', @attributes );
+    $self->xml_empty_tag( 'tableStyles', @attributes );
 }
 
 
@@ -1020,9 +1016,9 @@ sub _write_colors {
 
     return unless @custom_colors;
 
-    $self->{_writer}->startTag( 'colors' );
+    $self->xml_start_tag( 'colors' );
     $self->_write_mru_colors( @custom_colors );
-    $self->{_writer}->endTag( 'colors' );
+    $self->xml_end_tag( 'colors' );
 }
 
 
@@ -1043,14 +1039,14 @@ sub _write_mru_colors {
         splice @custom_colors, 0, ( $count - 10 );
     }
 
-    $self->{_writer}->startTag( 'mruColors' );
+    $self->xml_start_tag( 'mruColors' );
 
     # Write the custom colors in reverse order.
     for my $color ( reverse @custom_colors ) {
         $self->_write_color( 'rgb' => $color );
     }
 
-    $self->{_writer}->endTag( 'mruColors' );
+    $self->xml_end_tag( 'mruColors' );
 }
 
 
@@ -1067,7 +1063,7 @@ sub _write_condense {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'condense', @attributes );
+    $self->xml_empty_tag( 'condense', @attributes );
 }
 
 
@@ -1084,7 +1080,7 @@ sub _write_extend {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'extend', @attributes );
+    $self->xml_empty_tag( 'extend', @attributes );
 }
 
 

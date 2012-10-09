@@ -21,7 +21,7 @@ use Encode;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -40,9 +40,9 @@ our $VERSION = '0.51';
 sub new {
 
     my $class = shift;
-    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
+    my $fh    = shift;
+    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
-    $self->{_writer}       = undef;
     $self->{_strings}      = [];
     $self->{_string_count} = 0;
     $self->{_unique_count} = 0;
@@ -63,9 +63,7 @@ sub _assemble_xml_file {
 
     my $self = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
 
     # Write the sst table.
     $self->_write_sst( $self->{_string_count}, $self->{_unique_count} );
@@ -74,11 +72,10 @@ sub _assemble_xml_file {
     $self->_write_sst_strings();
 
     # Close the sst tag.
-    $self->{_writer}->endTag( 'sst' );
+    $self->xml_end_tag( 'sst' );
 
-    # Close the XML writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -158,7 +155,7 @@ sub _write_sst {
         'uniqueCount' => $unique_count,
     );
 
-    $self->{_writer}->startTag( 'sst', @attributes );
+    $self->xml_start_tag( 'sst', @attributes );
 }
 
 
@@ -214,10 +211,10 @@ sub _write_si {
         # Prevent utf8 strings from getting double encoded.
         $string = decode_utf8( $string );
 
-        $self->{_writer}->siRichElement( $string );
+        $self->xml_rich_si_element( $string );
     }
     else {
-        $self->{_writer}->siElement( $string, @attributes );
+        $self->xml_si_element( $string, @attributes );
     }
 
 }

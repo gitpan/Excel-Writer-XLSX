@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.51 of Excel::Writer::XLSX, released September 16, 2012.
+This document refers to version 0.52 of Excel::Writer::XLSX, released October 9, 2012.
 
 
 
@@ -308,7 +308,7 @@ Used to define a chart subtype where available.
 
     my $chart = $workbook->add_chart( type => 'bar', subtype => 'stacked' );
 
-Currently only Bar and Column charts support subtypes (stacked and percent_stacked). See the documentation for those chart types.
+See the L<Excel::Writer::XLSX::Chart> documentation for a list of available chart subtypes.
 
 =item * C<name>
 
@@ -6101,11 +6101,15 @@ Spreadsheet::XLSX: L<http://search.cpan.org/dist/Spreadsheet-XLSX>.
 =head1 ACKNOWLEDGMENTS
 
 
-The following people contributed to the debugging and testing of Excel::Writer::XLSX:
+The following people contributed to the debugging, testing or enhancement of Excel::Writer::XLSX:
 
-Rob Messer of IntelliSurvey gave me the initial prompt to port Spreadsheet::WriteExcel to the XLSX format. IntelliSurvey also sponsored large files optimisations and the charting feature.
+Rob Messer of IntelliSurvey gave me the initial prompt to port Spreadsheet::WriteExcel to the XLSX format. IntelliSurvey (L<http://www.intellisurvey.com>) also sponsored large files optimisations and the charting feature.
+
+Bariatric Advantage (L<http://www.bariatricadvantage.com>) sponsored work on chart formatting.
 
 Eric Johnson provided the ability to use secondary axes with charts.  Thanks to Foxtons (L<http://foxtons.co.uk>) for sponsoring this work.
+
+BuildFax (L<http://www.buildfax.com>) sponsored the Tables feature.
 
 
 

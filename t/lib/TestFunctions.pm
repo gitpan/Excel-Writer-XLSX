@@ -52,7 +52,6 @@ sub _expected_to_aref {
     while ( <main::DATA> ) {
         chomp;
         next unless /\S/;    # Skip blank lines.
-        s{/>$}{ />};         # Add space before element end like XML::Writer.
         s{^\s+}{};           # Remove leading whitespace from XML.
         push @data, $_;
     }
@@ -108,7 +107,7 @@ sub _xml_str_to_array {
     my $xml_str = shift;
     my @xml     = @{ _got_to_aref( $xml_str ) };
 
-    s{(\S)/>$}{$1 />} for @xml;
+    #s{ />$}{/>} for @xml;
 
     return @xml;
 }
@@ -127,7 +126,7 @@ sub _xml_str_to_array {
 sub _vml_str_to_array {
 
     my $vml_str = shift;
-    my @vml     = split /[\r\n]+/, $vml_str;
+    my @vml = split /[\r\n]+/, $vml_str;
 
     $vml_str = '';
 
@@ -139,7 +138,6 @@ sub _vml_str_to_array {
         s/^\s+//;            # Remove leading whitespace.
         s/\s+$//;            # Remove trailing whitespace.
         s/\'/"/g;            # Convert VMLs attribute quotes.
-        s{/>$}{ />}g;        # Add space before element end like XML::Writer.
 
         $_ .= " "  if /"$/;  # Add space between attributes.
         $_ .= "\n" if />$/;  # Add newline after element end.
@@ -151,7 +149,7 @@ sub _vml_str_to_array {
         $vml_str .= $_;
     }
 
-    return (split "\n", $vml_str );
+    return ( split "\n", $vml_str );
 }
 
 
@@ -203,7 +201,7 @@ sub _compare_xlsx_files {
     my @exp_members = sort $exp_zip->memberNames();
 
     # Ignore some test specific filenames.
-    if ( defined $ignore_members && @$ignore_members) {
+    if ( defined $ignore_members && @$ignore_members ) {
         my $ignore_regex = join '|', @$ignore_members;
 
         @got_members = grep { !/$ignore_regex/ } @got_members;
@@ -228,11 +226,17 @@ sub _compare_xlsx_files {
             $got_xml_str =~ s/\d\d\d\d-\d\d-\d\dT\d\d\:\d\d:\d\dZ//g;
         }
 
+        # Remove workbookView dimensions which are almost always different.
+        if ( $filename eq 'xl/workbook.xml' ) {
+            $exp_xml_str =~ s{<workbookView[^>]*>}{<workbookView/>};
+            $got_xml_str =~ s{<workbookView[^>]*>}{<workbookView/>};
+        }
+
         # Remove printer specific settings from Worksheet pageSetup elements.
         if ( $filename =~ m(xl/worksheets/sheet\d.xml) ) {
             $exp_xml_str =~ s/horizontalDpi="200" //;
             $exp_xml_str =~ s/verticalDpi="200" //;
-            $exp_xml_str =~ s/(<pageSetup.* )r:id="rId1"/$1/;
+            $exp_xml_str =~ s/(<pageSetup.*) r:id="rId1"/$1/;
         }
 
         if ( $filename =~ /.vml$/ ) {
@@ -349,21 +353,6 @@ sub _is_deep_diff {
 # the output to the supplied scalar ref for testing. Calls to the objects XML
 # writing subs will add the output to the scalar.
 #
-# We can choose between using the internal XMLwriterSimple module or the CPAN
-# XML::Writer module by using the environmental variable:
-#
-#    export _EXCEL_WRITER_XLSX_USE_XML_WRITER=1
-#
-# For one off testing we can use the following:
-#
-#    _EXCEL_WRITER_XLSX_USE_XML_WRITER=1 prove -l -r t
-#
-# Or:
-#
-#     perl Makefile.PL
-#     make test
-#     make test_with_xml_writer
-#
 sub _new_object {
 
     my $got_ref = shift;
@@ -371,19 +360,7 @@ sub _new_object {
 
     open my $got_fh, '>', $got_ref or die "Failed to open filehandle: $!";
 
-    my $object = $class->new();
-
-    my $writer;
-
-    if ( $ENV{_EXCEL_WRITER_XLSX_USE_XML_WRITER} ) {
-        require XML::Writer;
-        $writer = XML::Writer->new( OUTPUT => $got_fh );
-    }
-    else {
-        $writer = Excel::Writer::XLSX::Package::XMLwriterSimple->new( $got_fh );
-    }
-
-    $object->{_writer} = $writer;
+    my $object = $class->new( $got_fh );
 
     return $object;
 }
@@ -428,18 +405,7 @@ sub _new_workbook {
 
     my $workbook = Excel::Writer::XLSX->new( $tmp_fh );
 
-    my $writer;
-
-    # See XML::Writer comment in _new_object() above.
-    if ( $ENV{_EXCEL_WRITER_XLSX_USE_XML_WRITER} ) {
-        require XML::Writer;
-        $writer = XML::Writer->new( OUTPUT => $got_fh );
-    }
-    else {
-        $writer = Excel::Writer::XLSX::Package::XMLwriterSimple->new( $got_fh );
-    }
-
-    $workbook->{_writer} = $writer;
+    $workbook->{_fh} = $got_fh;
 
     return $workbook;
 }

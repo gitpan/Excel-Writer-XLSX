@@ -22,7 +22,7 @@ use Excel::Writer::XLSX::Utility qw(xl_rowcol_to_cell);
 
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -41,11 +41,10 @@ our $VERSION = '0.51';
 sub new {
 
     my $class = shift;
+    my $fh    = shift;
+    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
-    my $self = {
-        _writer     => undef,
-        _author_ids => {},
-    };
+    $self->{_author_ids} = {};
 
     bless $self, $class;
 
@@ -64,9 +63,7 @@ sub _assemble_xml_file {
     my $self          = shift;
     my $comments_data = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
 
     # Write the comments element.
     $self->_write_comments();
@@ -77,11 +74,10 @@ sub _assemble_xml_file {
     # Write the commentList element.
     $self->_write_comment_list( $comments_data );
 
-    $self->{_writer}->endTag( 'comments' );
+    $self->xml_end_tag( 'comments' );
 
-    # Close the XML writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -112,7 +108,7 @@ sub _write_comments {
 
     my @attributes = ( 'xmlns' => $xmlns );
 
-    $self->{_writer}->startTag( 'comments', @attributes );
+    $self->xml_start_tag( 'comments', @attributes );
 }
 
 
@@ -128,7 +124,7 @@ sub _write_authors {
     my $comment_data = shift;
     my $author_count = 0;
 
-    $self->{_writer}->startTag( 'authors' );
+    $self->xml_start_tag( 'authors' );
 
     for my $comment ( @$comment_data ) {
         my $author = $comment->[3];
@@ -143,7 +139,7 @@ sub _write_authors {
         }
     }
 
-    $self->{_writer}->endTag( 'authors' );
+    $self->xml_end_tag( 'authors' );
 }
 
 
@@ -158,7 +154,7 @@ sub _write_author {
     my $self = shift;
     my $data = shift;
 
-    $self->{_writer}->dataElement( 'author', $data );
+    $self->xml_data_element( 'author', $data );
 }
 
 
@@ -173,7 +169,7 @@ sub _write_comment_list {
     my $self         = shift;
     my $comment_data = shift;
 
-    $self->{_writer}->startTag( 'commentList' );
+    $self->xml_start_tag( 'commentList' );
 
     for my $comment ( @$comment_data ) {
         my $row    = $comment->[0];
@@ -189,7 +185,7 @@ sub _write_comment_list {
         $self->_write_comment( $row, $col, $text, $author_id );
     }
 
-    $self->{_writer}->endTag( 'commentList' );
+    $self->xml_end_tag( 'commentList' );
 }
 
 
@@ -213,13 +209,13 @@ sub _write_comment {
     push @attributes, ( 'authorId' => $author_id ) if defined $author_id;
 
 
-    $self->{_writer}->startTag( 'comment', @attributes );
+    $self->xml_start_tag( 'comment', @attributes );
 
     # Write the text element.
     $self->_write_text( $text );
 
 
-    $self->{_writer}->endTag( 'comment' );
+    $self->xml_end_tag( 'comment' );
 }
 
 
@@ -234,12 +230,12 @@ sub _write_text {
     my $self = shift;
     my $text = shift;
 
-    $self->{_writer}->startTag( 'text' );
+    $self->xml_start_tag( 'text' );
 
     # Write the text r element.
     $self->_write_text_r( $text );
 
-    $self->{_writer}->endTag( 'text' );
+    $self->xml_end_tag( 'text' );
 }
 
 
@@ -254,7 +250,7 @@ sub _write_text_r {
     my $self = shift;
     my $text = shift;
 
-    $self->{_writer}->startTag( 'r' );
+    $self->xml_start_tag( 'r' );
 
     # Write the rPr element.
     $self->_write_r_pr();
@@ -262,7 +258,7 @@ sub _write_text_r {
     # Write the text r element.
     $self->_write_text_t( $text );
 
-    $self->{_writer}->endTag( 'r' );
+    $self->xml_end_tag( 'r' );
 }
 
 
@@ -283,7 +279,7 @@ sub _write_text_t {
         push @attributes, ( 'xml:space' => 'preserve' );
     }
 
-    $self->{_writer}->dataElement( 't', $text, @attributes );
+    $self->xml_data_element( 't', $text, @attributes );
 }
 
 
@@ -297,7 +293,7 @@ sub _write_r_pr {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'rPr' );
+    $self->xml_start_tag( 'rPr' );
 
     # Write the sz element.
     $self->_write_sz();
@@ -311,7 +307,7 @@ sub _write_r_pr {
     # Write the family element.
     $self->_write_family();
 
-    $self->{_writer}->endTag( 'rPr' );
+    $self->xml_end_tag( 'rPr' );
 }
 
 
@@ -328,7 +324,7 @@ sub _write_sz {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'sz', @attributes );
+    $self->xml_empty_tag( 'sz', @attributes );
 }
 
 
@@ -345,7 +341,7 @@ sub _write_color {
 
     my @attributes = ( 'indexed' => $indexed );
 
-    $self->{_writer}->emptyTag( 'color', @attributes );
+    $self->xml_empty_tag( 'color', @attributes );
 }
 
 
@@ -362,7 +358,7 @@ sub _write_r_font {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'rFont', @attributes );
+    $self->xml_empty_tag( 'rFont', @attributes );
 }
 
 
@@ -379,7 +375,7 @@ sub _write_family {
 
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'family', @attributes );
+    $self->xml_empty_tag( 'family', @attributes );
 }
 
 

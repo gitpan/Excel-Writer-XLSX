@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -39,11 +39,11 @@ our $VERSION = '0.51';
 sub new {
 
     my $class = shift;
-    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
+    my $fh    = shift;
+    my $self  = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
-    $self->{_writer}            = undef;
-    $self->{_properties}        = {};
-    $self->{_localtime}         = [ localtime() ];
+    $self->{_properties} = {};
+    $self->{_localtime}  = [ localtime() ];
 
     bless $self, $class;
 
@@ -61,9 +61,7 @@ sub _assemble_xml_file {
 
     my $self = shift;
 
-    return unless $self->{_writer};
-
-    $self->_write_xml_declaration;
+    $self->xml_declaration;
     $self->_write_cp_core_properties();
     $self->_write_dc_title();
     $self->_write_dc_subject();
@@ -76,11 +74,10 @@ sub _assemble_xml_file {
     $self->_write_cp_category();
     $self->_write_cp_content_status();
 
-    $self->{_writer}->endTag( 'cp:coreProperties' );
+    $self->xml_end_tag( 'cp:coreProperties' );
 
-    # Close the XML writer object and filehandle.
-    $self->{_writer}->end();
-    $self->{_writer}->getOutput()->close();
+    # Close the XML writer filehandle.
+    $self->xml_get_fh()->close();
 }
 
 
@@ -158,7 +155,7 @@ sub _write_cp_core_properties {
         'xmlns:xsi'      => $xmlns_xsi,
     );
 
-    $self->{_writer}->startTag( 'cp:coreProperties', @attributes );
+    $self->xml_start_tag( 'cp:coreProperties', @attributes );
 }
 
 
@@ -173,7 +170,7 @@ sub _write_dc_creator {
     my $self = shift;
     my $data = $self->{_properties}->{author} || '';
 
-    $self->{_writer}->dataElement( 'dc:creator', $data );
+    $self->xml_data_element( 'dc:creator', $data );
 }
 
 
@@ -188,7 +185,7 @@ sub _write_cp_last_modified_by {
     my $self = shift;
     my $data = $self->{_properties}->{author} || '';
 
-    $self->{_writer}->dataElement( 'cp:lastModifiedBy', $data );
+    $self->xml_data_element( 'cp:lastModifiedBy', $data );
 }
 
 
@@ -208,7 +205,7 @@ sub _write_dcterms_created {
 
     my @attributes = ( 'xsi:type' => $xsi_type, );
 
-    $self->{_writer}->dataElement( 'dcterms:created', $date, @attributes );
+    $self->xml_data_element( 'dcterms:created', $date, @attributes );
 }
 
 
@@ -224,11 +221,11 @@ sub _write_dcterms_modified {
     my $date     = $self->{_properties}->{created};
     my $xsi_type = 'dcterms:W3CDTF';
 
-    $date =  $self->_localtime_to_iso8601_date( $date );
+    $date = $self->_localtime_to_iso8601_date( $date );
 
     my @attributes = ( 'xsi:type' => $xsi_type, );
 
-    $self->{_writer}->dataElement( 'dcterms:modified', $date, @attributes );
+    $self->xml_data_element( 'dcterms:modified', $date, @attributes );
 }
 
 
@@ -245,7 +242,7 @@ sub _write_dc_title {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'dc:title', $data );
+    $self->xml_data_element( 'dc:title', $data );
 }
 
 
@@ -262,7 +259,7 @@ sub _write_dc_subject {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'dc:subject', $data );
+    $self->xml_data_element( 'dc:subject', $data );
 }
 
 
@@ -279,7 +276,7 @@ sub _write_cp_keywords {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'cp:keywords', $data );
+    $self->xml_data_element( 'cp:keywords', $data );
 }
 
 
@@ -296,7 +293,7 @@ sub _write_dc_description {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'dc:description', $data );
+    $self->xml_data_element( 'dc:description', $data );
 }
 
 
@@ -313,7 +310,7 @@ sub _write_cp_category {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'cp:category', $data );
+    $self->xml_data_element( 'cp:category', $data );
 }
 
 
@@ -330,7 +327,7 @@ sub _write_cp_content_status {
 
     return unless $data;
 
-    $self->{_writer}->dataElement( 'cp:contentStatus', $data );
+    $self->xml_data_element( 'cp:contentStatus', $data );
 }
 
 

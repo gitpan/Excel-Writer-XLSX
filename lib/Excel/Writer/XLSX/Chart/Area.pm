@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 
 ###############################################################################
@@ -84,7 +84,7 @@ sub _write_area_chart {
 
     $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
 
-    $self->{_writer}->startTag( 'c:areaChart' );
+    $self->xml_start_tag( 'c:areaChart' );
 
     # Write the c:grouping element.
     $self->_write_grouping( $subtype );
@@ -98,7 +98,7 @@ sub _write_area_chart {
     # Write the c:axId elements
     $self->_write_axis_ids( %args );
 
-    $self->{_writer}->endTag( 'c:areaChart' );
+    $self->xml_end_tag( 'c:areaChart' );
 }
 
 
@@ -126,7 +126,7 @@ sub _write_number_format {
         'sourceLinked' => $source_linked,
     );
 
-    $self->{_writer}->emptyTag( 'c:numFmt', @attributes );
+    $self->xml_empty_tag( 'c:numFmt', @attributes );
 }
 
 
