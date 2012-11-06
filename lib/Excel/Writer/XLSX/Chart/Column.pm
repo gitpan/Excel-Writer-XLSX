@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 
 ###############################################################################
@@ -37,6 +37,14 @@ sub new {
 
     $self->{_subtype} = $self->{_subtype} || 'clustered';
     $self->{_horiz_val_axis} = 0;
+
+    # Override and reset the default axis values.
+    if ( $self->{_subtype} eq 'percent_stacked' ) {
+        $self->{_y_axis}->{_defaults}->{num_format} = '0%';
+    }
+
+    $self->set_y_axis();
+
 
     bless $self, $class;
 
@@ -121,34 +129,6 @@ sub _write_bar_dir {
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:barDir', @attributes );
-}
-
-
-##############################################################################
-#
-# _write_num_fmt()
-#
-# Over-ridden to add % format. TODO. This will be refactored back up to the
-# SUPER class later.
-#
-# Write the <c:numFmt> element.
-#
-sub _write_number_format {
-
-    my $self          = shift;
-    my $format_code   = shift || 'General';
-    my $source_linked = 1;
-
-    if ( $self->{_subtype} eq 'percent_stacked' ) {
-        $format_code = '0%';
-    }
-
-    my @attributes = (
-        'formatCode'   => $format_code,
-        'sourceLinked' => $source_linked,
-    );
-
-    $self->xml_empty_tag( 'c:numFmt', @attributes );
 }
 
 
@@ -281,7 +261,7 @@ Here is a complete example that demonstrates most of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/column1.jpg" width="483" height="291" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/column1.jpg" width="483" height="291" alt="Chart example." /></center></p>
 
 =end html
 

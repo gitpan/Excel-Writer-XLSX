@@ -2,7 +2,7 @@
 #
 # Tests for Excel::Writer::XLSX::Chart methods.
 #
-# reverse('(c)'), March 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), March 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -33,7 +33,7 @@ $expected = '<c:majorGridlines/>';
 
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
 
-$chart->_write_major_gridlines( { visible => 1 } );
+$chart->_write_major_gridlines( { _visible => 1 } );
 
 is( $got, $expected, $caption );
 

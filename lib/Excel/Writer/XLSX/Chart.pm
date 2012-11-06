@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 
 ###############################################################################
@@ -76,7 +76,7 @@ sub new {
     $self->{_style_id}          = 2;
     $self->{_axis_ids}          = [];
     $self->{_axis2_ids}         = [];
-    $self->{_has_category}      = 0;
+    $self->{_cat_has_num_fmt}   = 0;
     $self->{_requires_category} = 0;
     $self->{_legend_position}   = 'right';
     $self->{_cat_axis_position} = 'b';
@@ -238,7 +238,8 @@ sub add_series {
 sub set_x_axis {
 
     my $self = shift;
-    my $axis = $self->_convert_axis_args( @_ );
+
+    my $axis = $self->_convert_axis_args( $self->{_x_axis}, @_ );
 
     $self->{_x_axis} = $axis;
 }
@@ -253,10 +254,8 @@ sub set_x_axis {
 sub set_y_axis {
 
     my $self = shift;
-    my $axis = $self->_convert_axis_args(    #
-        major_gridlines => { visible => 1 },
-        @_
-    );
+
+    my $axis = $self->_convert_axis_args( $self->{_y_axis}, @_ );
 
     $self->{_y_axis} = $axis;
 }
@@ -271,12 +270,8 @@ sub set_y_axis {
 sub set_x2_axis {
 
     my $self = shift;
-    my $axis = $self->_convert_axis_args(
-        label_position => 'none',
-        crossing       => 'max',
-        visible        => 0,
-        @_
-    );
+
+    my $axis = $self->_convert_axis_args( $self->{_x2_axis}, @_ );
 
     $self->{_x2_axis} = $axis;
 }
@@ -291,12 +286,8 @@ sub set_x2_axis {
 sub set_y2_axis {
 
     my $self = shift;
-    my $axis = $self->_convert_axis_args(
-        major_gridlines => { visible => 0 },
-        position        => 'r',
-        visible         => 1,
-        @_
-    );
+
+    my $axis = $self->_convert_axis_args( $self->{_y2_axis}, @_ );
 
     $self->{_y2_axis} = $axis;
 }
@@ -323,7 +314,7 @@ sub set_title {
     $self->{_title_data_id} = $data_id;
 
     # Set the font properties if present.
-    $self->{_title_font} = $self->_convert_font_args( $arg{font} );
+    $self->{_title_font} = $self->_convert_font_args( $arg{name_font} );
 }
 
 
@@ -549,8 +540,8 @@ sub show_hidden_data {
 sub _convert_axis_args {
 
     my $self = shift;
-    my %arg  = @_;
-    my $axis;
+    my $axis = shift;
+    my %arg  = ( %{ $axis->{_defaults} }, @_ );
 
     my ( $name, $name_formula ) =
       $self->_process_names( $arg{name}, $arg{name_formula} );
@@ -558,23 +549,31 @@ sub _convert_axis_args {
     my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
 
     $axis = {
-        _name            => $name,
-        _formula         => $name_formula,
-        _data_id         => $data_id,
-        _reverse         => $arg{reverse},
-        _min             => $arg{min},
-        _max             => $arg{max},
-        _minor_unit      => $arg{minor_unit},
-        _major_unit      => $arg{major_unit},
-        _minor_unit_type => $arg{minor_unit_type},
-        _major_unit_type => $arg{major_unit_type},
-        _log_base        => $arg{log_base},
-        _crossing        => $arg{crossing},
-        _position        => $arg{position},
-        _label_position  => $arg{label_position},
-        _major_gridlines => $arg{major_gridlines} || { visible => 1 },
-        _visible         => defined $arg{visible} ? $arg{visible} : 1,
+        _defaults          => $axis->{_defaults},
+        _name              => $name,
+        _formula           => $name_formula,
+        _data_id           => $data_id,
+        _reverse           => $arg{reverse},
+        _min               => $arg{min},
+        _max               => $arg{max},
+        _minor_unit        => $arg{minor_unit},
+        _major_unit        => $arg{major_unit},
+        _minor_unit_type   => $arg{minor_unit_type},
+        _major_unit_type   => $arg{major_unit_type},
+        _log_base          => $arg{log_base},
+        _crossing          => $arg{crossing},
+        _position          => $arg{position},
+        _label_position    => $arg{label_position},
+        _num_format        => $arg{num_format},
+        _num_format_linked => $arg{num_format_linked},
+        _visible           => defined $arg{visible} ? $arg{visible} : 1,
     };
+
+    # Map major_gridlines properties.
+    if ( $arg{major_gridlines} && $arg{major_gridlines}->{visible} ) {
+        $axis->{_major_gridlines}->{_visible} =
+          $arg{major_gridlines}->{visible};
+    }
 
     # Only use the first letter of bottom, top, left or right.
     if ( defined $axis->{_position} ) {
@@ -582,8 +581,8 @@ sub _convert_axis_args {
     }
 
     # Set the font properties if present.
-    $axis->{_number_font} = $self->_convert_font_args( $arg{number_font} );
-    $axis->{_label_font}  = $self->_convert_font_args( $arg{label_font} );
+    $axis->{_num_font}  = $self->_convert_font_args( $arg{num_font} );
+    $axis->{_name_font} = $self->_convert_font_args( $arg{name_font} );
 
     return $axis;
 }
@@ -1257,6 +1256,32 @@ sub _set_default_properties {
         _line_options     => 0x0000,
     };
 
+
+    # Set the default axis properties.
+    $self->{_x_axis}->{_defaults} = {
+        num_format      => 'General',
+        major_gridlines => { visible => 0 }
+    };
+
+    $self->{_y_axis}->{_defaults} = {
+        num_format      => 'General',
+        major_gridlines => { visible => 1 }
+    };
+
+    $self->{_x2_axis}->{_defaults} = {
+        num_format     => 'General',
+        label_position => 'none',
+        crossing       => 'max',
+        visible        => 0
+    };
+
+    $self->{_y2_axis}->{_defaults} = {
+        num_format      => 'General',
+        major_gridlines => { visible => 0 },
+        position        => 'right',
+        visible         => 1
+    };
+
     $self->set_x_axis();
     $self->set_y_axis();
 
@@ -1654,8 +1679,6 @@ sub _write_cat {
     # Ignore <c:cat> elements for charts without category values.
     return unless $formula;
 
-    $self->{_has_category} = 1;
-
     $self->xml_start_tag( 'c:cat' );
 
     # Check the type of cached data.
@@ -1663,12 +1686,14 @@ sub _write_cat {
 
     if ( $type eq 'str' ) {
 
-        $self->{_has_category} = 0;
+        $self->{_cat_has_num_fmt} = 0;
 
         # Write the c:numRef element.
         $self->_write_str_ref( $formula, $data, $type );
     }
     else {
+
+        $self->{_cat_has_num_fmt} = 1;
 
         # Write the c:numRef element.
         $self->_write_num_ref( $formula, $data, $type );
@@ -1802,12 +1827,12 @@ sub _write_axis_ids {
     $self->_add_axis_ids( %args );
 
     if ( $args{primary_axes} ) {
-        ## Write the axis ids for the primary axes.
+        # Write the axis ids for the primary axes.
         $self->_write_axis_id( $self->{_axis_ids}->[0] );
         $self->_write_axis_id( $self->{_axis_ids}->[1] );
     }
     else {
-        ## Write the axis ids for the secondary axes.
+        # Write the axis ids for the secondary axes.
         $self->_write_axis_id( $self->{_axis2_ids}->[0] );
         $self->_write_axis_id( $self->{_axis2_ids}->[1] );
     }
@@ -1867,25 +1892,31 @@ sub _write_cat_axis {
     # Write the c:axPos element.
     $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
+    # Write the c:majorGridlines element.
+    $self->_write_major_gridlines( $x_axis->{_major_gridlines} );
+
     # Write the axis title elements.
     my $title;
     if ( $title = $x_axis->{_formula} ) {
 
         $self->_write_title_formula( $title, $x_axis->{_data_id}, $horiz,
-            $x_axis->{_label_font} );
+            $x_axis->{_name_font} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $x_axis->{_label_font} );
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font} );
     }
 
     # Write the c:numFmt element.
-    $self->_write_num_fmt();
+    $self->_write_cat_number_format( $x_axis );
+
+    # Write the c:majorTickMark element.
+    $self->_write_major_tick_mark( $x_axis->{_major_tick_mark} );
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_number_font} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -1963,20 +1994,23 @@ sub _write_val_axis {
     my $title;
     if ( $title = $y_axis->{_formula} ) {
         $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
-            $y_axis->{_label_font} );
+            $y_axis->{_name_font} );
     }
     elsif ( $title = $y_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $y_axis->{_label_font} );
+        $self->_write_title_rich( $title, $horiz, $y_axis->{_name_font} );
     }
 
     # Write the c:numberFormat element.
-    $self->_write_number_format();
+    $self->_write_number_format( $y_axis );
+
+    # Write the c:majorTickMark element.
+    $self->_write_major_tick_mark( $y_axis->{_major_tick_mark} );
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( $y_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $y_axis->{_number_font} );
+    $self->_write_axis_font( $y_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[0] );
@@ -2047,20 +2081,23 @@ sub _write_cat_val_axis {
     my $title;
     if ( $title = $x_axis->{_formula} ) {
         $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
-            $x_axis->{_label_font} );
+            $x_axis->{_name_font} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $x_axis->{_label_font} );
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font} );
     }
 
     # Write the c:numberFormat element.
-    $self->_write_number_format();
+    $self->_write_number_format( $x_axis );
+
+    # Write the c:majorTickMark element.
+    $self->_write_major_tick_mark( $x_axis->{_major_tick_mark} );
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_number_font} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2130,20 +2167,23 @@ sub _write_date_axis {
     my $title;
     if ( $title = $x_axis->{_formula} ) {
         $self->_write_title_formula( $title, $x_axis->{_data_id}, undef,
-            $x_axis->{_label_font} );
+            $x_axis->{_name_font} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, undef, $x_axis->{_label_font} );
+        $self->_write_title_rich( $title, undef, $x_axis->{_name_font} );
     }
 
     # Write the c:numFmt element.
-    $self->_write_num_fmt( 'dd/mm/yyyy' );
+    $self->_write_number_format( $x_axis );
+
+    # Write the c:majorTickMark element.
+    $self->_write_major_tick_mark( $x_axis->{_major_tick_mark} );
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_number_font} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2323,25 +2363,94 @@ sub _write_axis_pos {
 
 ##############################################################################
 #
-# _write_num_fmt()
+# _write_number_format()
 #
-# Write the <c:numFmt> element.
+# Write the <c:numberFormat> element. Note: It is assumed that if a user
+# defined number format is supplied (i.e., non-default) then the sourceLinked
+# attribute is 0. The user can override this if required.
 #
-sub _write_num_fmt {
+sub _write_number_format {
 
-    my $self          = shift;
-    my $format_code   = shift || 'General';
-    my $source_linked = 1;
+    my $self           = shift;
+    my $axis           = shift;
+    my $format_code    = $axis->{_num_format};
+    my $source_linked  = 1;
 
-    # These elements are only required for charts with categories.
-    return unless $self->{_has_category};
+    # Check if a user defined number format has been set.
+    if ( $format_code ne $axis->{_defaults}->{num_format} ) {
+        $source_linked  = 0;
+    }
+
+    # User override of sourceLinked.
+    if ( $axis->{_num_format_linked} ) {
+        $source_linked = 1;
+    }
 
     my @attributes = (
         'formatCode'   => $format_code,
         'sourceLinked' => $source_linked,
     );
 
-    $self->xml_empty_tag( 'c:numFmt', @attributes );
+    $self->xml_encoded_empty_tag( 'c:numFmt', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_cat_number_format()
+#
+# Write the <c:numFmt> element. Special case handler for category axes which
+# don't always have a number format.
+#
+sub _write_cat_number_format {
+
+    my $self           = shift;
+    my $axis           = shift;
+    my $format_code    = $axis->{_num_format};
+    my $source_linked  = 1;
+    my $default_format = 1;
+
+    # Check if a user defined number format has been set.
+    if ( $format_code ne $axis->{_defaults}->{num_format} ) {
+        $source_linked  = 0;
+        $default_format = 0;
+    }
+
+    # User override of linkedSource.
+    if ( $axis->{_num_format_linked} ) {
+        $source_linked = 1;
+    }
+
+    # Skip if cat doesn't have a num format (unless it is non-default).
+    if ( !$self->{_cat_has_num_fmt} && $default_format ) {
+        return;
+    }
+
+    my @attributes = (
+        'formatCode'   => $format_code,
+        'sourceLinked' => $source_linked,
+    );
+
+    $self->xml_encoded_empty_tag( 'c:numFmt', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_major_tick_mark()
+#
+# Write the <c:majorTickMark> element.
+#
+sub _write_major_tick_mark {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:majorTickMark', @attributes );
 }
 
 
@@ -2476,35 +2585,13 @@ sub _write_label_offset {
 #
 sub _write_major_gridlines {
 
-    my $self    = shift;
-    my $options = shift;
+    my $self      = shift;
+    my $gridlines = shift;
 
-    return unless $options->{visible};
+    return unless $gridlines;
+    return unless $gridlines->{_visible};
 
     $self->xml_empty_tag( 'c:majorGridlines' );
-}
-
-
-##############################################################################
-#
-# _write_number_format()
-#
-# Write the <c:numberFormat> element.
-#
-# TODO. Merge/replace with _write_num_fmt().
-#
-sub _write_number_format {
-
-    my $self          = shift;
-    my $format_code   = 'General';
-    my $source_linked = 1;
-
-    my @attributes = (
-        'formatCode'   => $format_code,
-        'sourceLinked' => $source_linked,
-    );
-
-    $self->xml_empty_tag( 'c:numFmt', @attributes );
 }
 
 
@@ -2723,7 +2810,7 @@ sub _write_plot_vis_only {
     my $self = shift;
     my $val  = 1;
 
-    # Ignore this element if we are plitting hidden data.
+    # Ignore this element if we are plotting hidden data.
     return if $self->{_show_hidden_data};
 
     my @attributes = ( 'val' => $val );
@@ -4137,15 +4224,19 @@ Creates a Line style chart. See L<Excel::Writer::XLSX::Chart::Line>.
 
 =item * C<pie>
 
-Creates an Pie style chart. See L<Excel::Writer::XLSX::Chart::Pie>.
+Creates a Pie style chart. See L<Excel::Writer::XLSX::Chart::Pie>.
 
 =item * C<scatter>
 
-Creates an Scatter style chart. See L<Excel::Writer::XLSX::Chart::Scatter>.
+Creates a Scatter style chart. See L<Excel::Writer::XLSX::Chart::Scatter>.
 
 =item * C<stock>
 
-Creates an Stock style chart. See L<Excel::Writer::XLSX::Chart::Stock>.
+Creates a Stock style chart. See L<Excel::Writer::XLSX::Chart::Stock>.
+
+=item * C<radar>
+
+Creates a Radar style chart. See L<Excel::Writer::XLSX::Chart::Radar>.
 
 =back
 
@@ -4173,7 +4264,9 @@ The currently available subtypes are:
         smooth_with_markers
         smooth
 
-
+    radar
+        with_markers
+        filled
 
 More charts and sub-types will be supported in time. See the L</TODO> section.
 
@@ -4184,9 +4277,9 @@ Methods that are common to all chart types are documented below. See the documen
 
 =head2 add_series()
 
-In an Excel chart a "series" is a collection of information such as values, x-axis labels and the formatting that define which data is plotted.
+In an Excel chart a "series" is a collection of information such as values, X axis labels and the formatting that define which data is plotted.
 
-With a Excel::Writer::XLSX chart object the C<add_series()> method is used to set the properties for a series:
+With an Excel::Writer::XLSX chart object the C<add_series()> method is used to set the properties for a series:
 
     $chart->add_series(
         categories => '=Sheet1!$A$2:$A$10', # Optional.
@@ -4204,7 +4297,7 @@ This is the most important property of a series and must be set for every chart 
 
 =item * C<categories>
 
-This sets the chart category labels. The category is more or less the same as the X-axis. In most chart types the C<categories> property is optional and the chart will just assume a sequential series from C<1 .. n>.
+This sets the chart category labels. The category is more or less the same as the X axis. In most chart types the C<categories> property is optional and the chart will just assume a sequential series from C<1 .. n>.
 
 =item * C<name>
 
@@ -4224,7 +4317,7 @@ Set the fill properties of the series such as colour. See the L</CHART FORMATTIN
 
 =item * C<marker>
 
-Set the properties of the series marker such as style and color. See the L</CHART FORMATTING> section below.
+Set the properties of the series marker such as style and colour. See the L</CHART FORMATTING> section below.
 
 =item * C<trendline>
 
@@ -4249,7 +4342,7 @@ The following are equivalent:
     $chart->add_series( categories => '=Sheet1!$A$2:$A$7'      ); # Same as ...
     $chart->add_series( categories => [ 'Sheet1', 1, 6, 0, 0 ] ); # Zero-indexed.
 
-You can add more than one series to a chart. In fact, some chart types such as C<stock> require it. The series numbering and order in the Excel chart will be the same as the order in which that are added in Excel::Writer::XLSX.
+You can add more than one series to a chart. In fact, some chart types such as C<stock> require it. The series numbering and order in the Excel chart will be the same as the order in which they are added in Excel::Writer::XLSX.
 
     # Add the first series.
     $chart->add_series(
@@ -4276,6 +4369,9 @@ The C<set_x_axis()> method is used to set properties of the X axis.
 The properties that can be set are:
 
     name
+    name_font
+    num_font
+    num_format
     min
     max
     minor_unit
@@ -4285,6 +4381,7 @@ The properties that can be set are:
     log_base
     label_position
     major_gridlines
+    visible
 
 These are explained below. Some properties are only applicable to value or category axes, as indicated. See L<Value and Category Axes> for an explanation of Excel's distinction between the axis types.
 
@@ -4299,33 +4396,58 @@ Set the name (title or caption) for the axis. The name is displayed below the X 
 
 The name can also be a formula such as C<=Sheet1!$A$1>.
 
+=item * C<name_font>
+
+Set the font properties for the axis title. (Applicable to category and value axes).
+
+    $chart->set_x_axis( name_font => { name => 'Arial', size => 10 } );
+
+See the L</CHART FONTS> section below.
+
+=item * C<num_font>
+
+Set the font properties for the axis numbers. (Applicable to category and value axes).
+
+    $chart->set_x_axis( num_font => { bold => 1, italic => 1 } );
+
+See the L</CHART FONTS> section below.
+
+=item * C<num_format>
+
+Set the number format for the axis. (Applicable to category and value axes).
+
+    $chart->set_x_axis( num_format => '#,##0.00' );
+    $chart->set_y_axis( num_format => '0.00%'    );
+
+The number format is similar to the Worksheet Cell Format C<num_format> apart from the fact that a format index cannot be used. The explicit format string must be used as show above. See L<Excel::Writer::XLSX/set_num_format()> for more information.
+
 =item * C<min>
 
-Set the minimum value for the axis range. (Applicable to value axes only).
+Set the minimum value for the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( min => 20 );
 
 =item * C<max>
 
-Set the maximum value for the axis range. (Applicable to value axes only).
+Set the maximum value for the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( max => 80 );
 
 =item * C<minor_unit>
 
-Set the increment of the minor units in the axis range. (Applicable to value axes only).
+Set the increment of the minor units in the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( minor_unit => 0.4 );
 
 =item * C<major_unit>
 
-Set the increment of the major units in the axis range. (Applicable to value axes only).
+Set the increment of the major units in the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( major_unit => 2 );
 
 =item * C<crossing>
 
-Set the position where the y axis will cross the x axis. (Applicable to category and value axes).
+Set the position where the y axis will cross the x axis. (Applicable to category and value axes.)
 
 The C<crossing> value can either be the string C<'max'> to set the crossing at the maximum axis value or a numeric value.
 
@@ -4339,13 +4461,13 @@ If crossing is omitted (the default) the crossing will be set automatically by E
 
 =item * C<reverse>
 
-Reverse the order of the axis categories or values. (Applicable to category and value axes).
+Reverse the order of the axis categories or values. (Applicable to category and value axes.)
 
     $chart->set_x_axis( reverse => 1 );
 
 =item * C<log_base>
 
-Set the log base of the axis range. (Applicable to value axes only).
+Set the log base of the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( log_base => 10 );
 
@@ -4360,13 +4482,19 @@ Set the "Axis labels" position for the axis. The following positions are availab
 
 =item * C<major_gridlines>
 
-Configure the major gridlines for the axis.  The only option currently available is used to shows or hide the major gridlines.
+Configure the major gridlines for the axis. The only option currently available is used to show or hide the major gridlines.
 
     $chart->set_x_axis( major_gridlines => { visible => 1 } );
 
+=item * C<visible>
+
+Configure the visibility of the axis.
+
+    $chart->set_x_axis( visible => 0 );
+
 =back
 
-More than one property can be set in a call to C<set_x_axis>:
+More than one property can be set in a call to C<set_x_axis()>:
 
     $chart->set_x_axis(
         name => 'Quarterly results',
@@ -4413,6 +4541,10 @@ The properties that can be set are:
 =item * C<name>
 
 Set the name (title) for the chart. The name is displayed above the chart. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no chart title.
+
+=item * C<name_font>
+
+Set the font properties for the chart title. See the L</CHART FONTS> section below.
 
 =back
 
@@ -4481,7 +4613,7 @@ The C<show_blanks_as()> method controls how blank data is displayed in a chart.
 
 The available options are:
 
-        gap    # Blank data is show as a gap. The default.
+        gap    # Blank data is shown as a gap. The default.
         zero   # Blank data is displayed as zero.
         span   # Blank data is connected with a line.
 
@@ -4551,7 +4683,7 @@ The C<color> property sets the color of the C<line>.
         line       => { color => 'red' },
     );
 
-The available colors are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the color of a line with a HTML style RGB color:
+The available colours are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the colour of a line with a HTML style RGB colour:
 
     $chart->add_series(
         line       => { color => '#FF0000' },
@@ -4585,7 +4717,7 @@ The following C<dash_type> values are available. They are shown in the order tha
 
 The default line style is C<solid>.
 
-More than one C<line> property can be specified at time:
+More than one C<line> property can be specified at a time:
 
     $chart->add_series(
         values     => '=Sheet1!$B$1:$B$5',
@@ -4612,7 +4744,7 @@ The following properties can be set for C<fill> formats in a chart.
     none
     color
 
-The C<none> property is uses to turn the C<fill> property off (it is generally on by default).
+The C<none> property is used to turn the C<fill> property off (it is generally on by default).
 
 
     $chart->add_series(
@@ -4620,14 +4752,14 @@ The C<none> property is uses to turn the C<fill> property off (it is generally o
         fill       => { none => 1 },
     );
 
-The C<color> property sets the color of the C<fill> area.
+The C<color> property sets the colour of the C<fill> area.
 
     $chart->add_series(
         values     => '=Sheet1!$B$1:$B$5',
         fill       => { color => 'red' },
     );
 
-The available colors are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the color of a fill with a HTML style RGB color:
+The available colours are shown in the main L<Excel::Writer::XLSX> documentation. It is also possible to set the colour of a fill with a HTML style RGB colour:
 
     $chart->add_series(
         fill       => { color => '#FF0000' },
@@ -4741,7 +4873,7 @@ A C<polynomial> trendline can also specify the C<order> of the polynomial. The d
         },
     );
 
-A C<moving_average> trendline can also the C<period> of the moving average. The default value is 2.
+A C<moving_average> trendline can also specify the C<period> of the moving average. The default value is 2.
 
     $chart->add_series(
         values     => '=Sheet1!$B$1:$B$5',
@@ -4789,7 +4921,7 @@ Several of these properties can be set in one go:
         },
     );
 
-Trendlines cannot be added to series in a stacked chart or pie chart or (when implemented) to 3-D, radar, surface, or doughnut charts.
+Trendlines cannot be added to series in a stacked chart or pie chart, radar chart or (when implemented) to 3D, surface, or doughnut charts.
 
 =head2 Data Labels
 
@@ -4847,7 +4979,7 @@ Valid positions are:
     outside_end     # Pie chart mainly.
     best_fit        # Pie chart mainly.
 
-The C<percentage> property is used to turn on the I<Percentage> for the data label for a series. It is mainly used for pie charts.
+The C<percentage> property is used to turn on the display of data labels as a I<Percentage> for a series. It is mainly used for pie charts.
 
     $chart->add_series(
         values      => '=Sheet1!$B$1:$B$5',
@@ -4868,9 +5000,104 @@ Note: Even when leader lines are turned on they aren't automatically visible in 
 
 Other formatting options will be added in time. If there is a feature that you would like to see included drop me a line.
 
+
+=head1 CHART FONTS
+
+The following font properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart titles, axis labels and axis numbering. They correspond to the equivalent Worksheet cell Format object properties. See L<Excel::Writer::XLSX/FORMAT_METHODS> for more information.
+
+    name
+    size
+    bold
+    italic
+    underline
+    color
+
+The following explains the available font properties:
+
+=over
+
+=item * C<name>
+
+Set the font name:
+
+    $chart->set_x_axis( num_font => { name => 'Arial' } );
+
+=item * C<size>
+
+Set the font size:
+
+    $chart->set_x_axis( num_font => { name => 'Arial', size => 10 } );
+
+=item * C<bold>
+
+Set the font bold property, should be 0 or 1:
+
+    $chart->set_x_axis( num_font => { bold => 1 } );
+
+=item * C<italic>
+
+Set the font italic property, should be 0 or 1:
+
+    $chart->set_x_axis( num_font => { italic => 1 } );
+
+=item * C<underline>
+
+Set the font underline property, should be 0 or 1:
+
+    $chart->set_x_axis( num_font => { underline => 1 } );
+
+=item * C<color>
+
+Set the font color property. Can be a color index, a color name or HTML style RGB colour:
+
+    $chart->set_x_axis( num_font => { color => 'red' } );
+    $chart->set_y_axis( num_font => { color => '#92D050' } );
+
+=back
+
+Here is an example of Font formatting in a Chart program:
+
+    # Format the chart title.
+    $chart->set_title(
+        name      => 'Sales Results Chart',
+        name_font => {
+            name  => 'Calibri',
+            color => 'yellow',
+        },
+    );
+
+    # Format the X-axis.
+    $chart->set_x_axis(
+        name      => 'Month',
+        name_font => {
+            name  => 'Arial',
+            color => '#92D050'
+        },
+        num_font => {
+            name  => 'Courier New',
+            color => '#00B0F0',
+        },
+    );
+
+    # Format the Y-axis.
+    $chart->set_y_axis(
+        name      => 'Sales (1000 units)',
+        name_font => {
+            name      => 'Century',
+            underline => 1,
+            color     => 'red'
+        },
+        num_font => {
+            bold   => 1,
+            italic => 1,
+            color  => '#7030A0',
+        },
+    );
+
+
 =head1 WORKSHEET METHODS
 
-In Excel a chartsheet (i.e, a chart that isn't embedded) shares properties with data worksheets such as tab selection, headers, footers, margins and print properties.
+In Excel a chartsheet (i.e, a chart that isn't embedded) shares properties with data worksheets such as tab selection, headers, footers, margins, and print properties.
 
 In Excel::Writer::XLSX you can set chartsheet properties using the same methods that are used for Worksheet objects.
 
@@ -4955,7 +5182,7 @@ Here is a complete example that demonstrates some of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/area1.jpg" width="527" height="320" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/area1.jpg" width="527" height="320" alt="Chart example." /></center></p>
 
 =end html
 
@@ -4964,9 +5191,9 @@ Here is a complete example that demonstrates some of the available features when
 
 Excel differentiates between a chart axis that is used for series B<categories> and an axis that is used for series B<values>.
 
-In the example above the x-axis is the category axis and each of the values is evenly spaced. The y-axis (in this case) is the value axis and points are displayed according to their value.
+In the example above the X axis is the category axis and each of the values is evenly spaced. The Y axis (in this case) is the value axis and points are displayed according to their value.
 
-Since Excel treats the axes differently it also handles their formatting differently and exposed different properties for each.
+Since Excel treats the axes differently it also handles their formatting differently and exposes different properties for each.
 
 As such some of C<Excel::Writer::XLSX> axis properties can be set for a value axis, some can be set for a category axis and some properties can be set for both.
 
@@ -4991,7 +5218,7 @@ Features that are on the TODO list and will be added are:
 
 =item * 3D charts.
 
-=item * Additional chart types such as Bubble and Radar.
+=item * Additional chart types such as Bubble or Doughnut.
 
 =back
 
@@ -5007,4 +5234,3 @@ John McNamara jmcnamara@cpan.org
 Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
-

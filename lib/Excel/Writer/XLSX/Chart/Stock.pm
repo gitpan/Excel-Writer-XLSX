@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 
 ###############################################################################
@@ -35,6 +35,12 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
     $self->{_show_crosses} = 0;
+
+    # Override and reset the default axis values.
+    $self->{_x_axis}->{_defaults}->{num_format}  = 'dd/mm/yyyy';
+    $self->{_x2_axis}->{_defaults}->{num_format} = 'dd/mm/yyyy';
+    $self->set_x_axis();
+    $self->set_x2_axis();
 
     bless $self, $class;
     return $self;
@@ -240,7 +246,7 @@ These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class sp
 
 There aren't currently any stock chart specific methods. See the TODO section of L<Excel::Writer::XLSX::Chart>.
 
-The default Stock chart is an High-Low-Close chart. A series must be added for each of these data sources.
+The default Stock chart is a High-Low-Close chart. A series must be added for each of these data sources.
 
 
 =head1 EXAMPLE
@@ -314,7 +320,7 @@ Here is a complete example that demonstrates most of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/stock1.jpg" width="483" height="291" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/stock1.jpg" width="483" height="291" alt="Chart example." /></center></p>
 
 =end html
 

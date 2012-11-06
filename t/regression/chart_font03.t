@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse('©'), September 2012, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), September 2012, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -54,19 +54,19 @@ $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
 $chart->set_title(
     name => 'Title',
-    font => { bold => 0, italic => 1 },
+    name_font => { bold => 0, italic => 1 },
 );
 
 $chart->set_x_axis(
-    name        => 'XXX',
-    number_font => { size => 11, bold => 1, italic => 1 },
-    label_font => { bold => 0, italic => 1 },
+    name      => 'XXX',
+    name_font => { bold => 0, italic => 1 },
+    num_font  => { size => 11, bold => 1, italic => 1 },
 );
 
 $chart->set_y_axis(
-    name        => 'YYY',
-    number_font => { size => 9, bold => 0, italic => 1 },
-    label_font => { bold => 1, italic => 1 },
+    name      => 'YYY',
+    name_font => { bold => 1, italic => 1 },
+    num_font  => { size => 9, bold => 0, italic => 1 },
 );
 
 $worksheet->insert_chart( 'E9', $chart );
