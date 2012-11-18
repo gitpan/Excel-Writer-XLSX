@@ -20,7 +20,7 @@ use Exporter;
 use Excel::Writer::XLSX::Worksheet;
 
 our @ISA     = qw(Excel::Writer::XLSX::Worksheet);
-our $VERSION = '0.55';
+our $VERSION = '0.56';
 
 
 ###############################################################################
@@ -164,6 +164,7 @@ sub _prepare_chart {
     my $chart_id   = shift;
     my $drawing_id = shift;
 
+    $self->{_chart}->{_id} = $chart_id -1;
 
     my $drawing = Excel::Writer::XLSX::Drawing->new();
     $self->{_drawing} = $drawing;

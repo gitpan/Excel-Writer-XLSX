@@ -21,7 +21,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Worksheet;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.55';
+our $VERSION = '0.56';
 
 
 ###############################################################################
@@ -1383,7 +1383,7 @@ sub _write_txBody {
 
     $self->xml_end_tag( 'a:rPr' );
 
-    $self->xml_encoded_data_element( 'a:t', $shape->{_text} );
+    $self->xml_data_element( 'a:t', $shape->{_text} );
 
     $self->xml_end_tag( 'a:r' );
     $self->xml_end_tag( 'a:p' );
