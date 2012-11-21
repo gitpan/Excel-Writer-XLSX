@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.56';
+our $VERSION = '0.57';
 
 
 ###############################################################################
@@ -344,53 +344,6 @@ sub set_plotarea {
 
     # TODO. Need to refactor for XLSX format.
     return;
-
-    my $self = shift;
-    my %arg  = @_;
-    return unless keys %arg;
-
-    my $area = $self->{_plotarea};
-
-    # Set the plotarea visibility.
-    if ( defined $arg{visible} ) {
-        $area->{_visible} = $arg{visible};
-        return if !$area->{_visible};
-    }
-
-    # TODO. could move this out of if statement.
-    $area->{_bg_color_index} = 0x08;
-
-    # Set the chart background colour.
-    if ( defined $arg{color} ) {
-        my ( $index, $rgb ) = $self->_get_color_indices( $arg{color} );
-        if ( defined $index ) {
-            $area->{_fg_color_index} = $index;
-            $area->{_fg_color_rgb}   = $rgb;
-            $area->{_bg_color_index} = 0x08;
-            $area->{_bg_color_rgb}   = 0x000000;
-        }
-    }
-
-    # Set the border line colour.
-    if ( defined $arg{line_color} ) {
-        my ( $index, $rgb ) = $self->_get_color_indices( $arg{line_color} );
-        if ( defined $index ) {
-            $area->{_line_color_index} = $index;
-            $area->{_line_color_rgb}   = $rgb;
-        }
-    }
-
-    # Set the border line pattern.
-    if ( defined $arg{line_pattern} ) {
-        my $pattern = $self->_get_line_pattern( $arg{line_pattern} );
-        $area->{_line_pattern} = $pattern;
-    }
-
-    # Set the border line weight.
-    if ( defined $arg{line_weight} ) {
-        my $weight = $self->_get_line_weight( $arg{line_weight} );
-        $area->{_line_weight} = $weight;
-    }
 }
 
 
@@ -404,60 +357,6 @@ sub set_chartarea {
 
     # TODO. Need to refactor for XLSX format.
     return;
-
-    my $self = shift;
-    my %arg  = @_;
-    return unless keys %arg;
-
-    my $area = $self->{_chartarea};
-
-    # Embedded automatic line weight has a different default value.
-    $area->{_line_weight} = 0xFFFF if $self->{_embedded};
-
-    # Set the chart background colour.
-    if ( defined $arg{color} ) {
-        my ( $index, $rgb ) = $self->_get_color_indices( $arg{color} );
-        if ( defined $index ) {
-            $area->{_fg_color_index} = $index;
-            $area->{_fg_color_rgb}   = $rgb;
-            $area->{_bg_color_index} = 0x08;
-            $area->{_bg_color_rgb}   = 0x000000;
-            $area->{_area_pattern}   = 1;
-            $area->{_area_options}   = 0x0000 if $self->{_embedded};
-            $area->{_visible}        = 1;
-        }
-    }
-
-    # Set the border line colour.
-    if ( defined $arg{line_color} ) {
-        my ( $index, $rgb ) = $self->_get_color_indices( $arg{line_color} );
-        if ( defined $index ) {
-            $area->{_line_color_index} = $index;
-            $area->{_line_color_rgb}   = $rgb;
-            $area->{_line_pattern}     = 0x00;
-            $area->{_line_options}     = 0x0000;
-            $area->{_visible}          = 1;
-        }
-    }
-
-    # Set the border line pattern.
-    if ( defined $arg{line_pattern} ) {
-        my $pattern = $self->_get_line_pattern( $arg{line_pattern} );
-        $area->{_line_pattern}     = $pattern;
-        $area->{_line_options}     = 0x0000;
-        $area->{_line_color_index} = 0x4F if !defined $arg{line_color};
-        $area->{_visible}          = 1;
-    }
-
-    # Set the border line weight.
-    if ( defined $arg{line_weight} ) {
-        my $weight = $self->_get_line_weight( $arg{line_weight} );
-        $area->{_line_weight}      = $weight;
-        $area->{_line_options}     = 0x0000;
-        $area->{_line_pattern}     = 0x00 if !defined $arg{line_pattern};
-        $area->{_line_color_index} = 0x4F if !defined $arg{line_color};
-        $area->{_visible}          = 1;
-    }
 }
 
 
@@ -571,9 +470,16 @@ sub _convert_axis_args {
 
     # Map major_gridlines properties.
     if ( $arg{major_gridlines} && $arg{major_gridlines}->{visible} ) {
-        $axis->{_major_gridlines}->{_visible} =
-          $arg{major_gridlines}->{visible};
+        $axis->{_major_gridlines} =
+          $self->_get_gridline_properties( $arg{major_gridlines} );
     }
+
+    # Map minor_gridlines properties.
+    if ( $arg{minor_gridlines} && $arg{minor_gridlines}->{visible} ) {
+        $axis->{_minor_gridlines} =
+          $self->_get_gridline_properties( $arg{minor_gridlines} );
+    }
+
 
     # Only use the first letter of bottom, top, left or right.
     if ( defined $axis->{_position} ) {
@@ -797,88 +703,6 @@ sub _get_palette_color {
 
 ###############################################################################
 #
-# _get_line_pattern()
-#
-# Get the Excel chart index for line pattern that corresponds to the user
-# defined value.
-#
-sub _get_line_pattern {
-
-    my $self    = shift;
-    my $value   = lc shift;
-    my $default = 0;
-    my $pattern;
-
-    my %patterns = (
-        0              => 5,
-        1              => 0,
-        2              => 1,
-        3              => 2,
-        4              => 3,
-        5              => 4,
-        6              => 7,
-        7              => 6,
-        8              => 8,
-        'solid'        => 0,
-        'dash'         => 1,
-        'dot'          => 2,
-        'dash-dot'     => 3,
-        'dash-dot-dot' => 4,
-        'none'         => 5,
-        'dark-gray'    => 6,
-        'medium-gray'  => 7,
-        'light-gray'   => 8,
-    );
-
-    if ( exists $patterns{$value} ) {
-        $pattern = $patterns{$value};
-    }
-    else {
-        $pattern = $default;
-    }
-
-    return $pattern;
-}
-
-
-###############################################################################
-#
-# _get_line_weight()
-#
-# Get the Excel chart index for line weight that corresponds to the user
-# defined value.
-#
-sub _get_line_weight {
-
-    my $self    = shift;
-    my $value   = lc shift;
-    my $default = 0;
-    my $weight;
-
-    my %weights = (
-        1          => -1,
-        2          => 0,
-        3          => 1,
-        4          => 2,
-        'hairline' => -1,
-        'narrow'   => 0,
-        'medium'   => 1,
-        'wide'     => 2,
-    );
-
-    if ( exists $weights{$value} ) {
-        $weight = $weights{$value};
-    }
-    else {
-        $weight = $default;
-    }
-
-    return $weight;
-}
-
-
-###############################################################################
-#
 # _get_line_properties()
 #
 # Convert user defined line properties to the structure required internally.
@@ -1060,6 +884,28 @@ sub _get_trendline_properties {
 
 ###############################################################################
 #
+# _get_gridline_properties()
+#
+# Convert user defined gridline properties to the structure required internally.
+#
+sub _get_gridline_properties {
+
+    my $self = shift;
+    my $args = shift;
+    my $gridline;
+
+    # Set the visible property for the gridline..
+    $gridline->{_visible} = $args->{visible};
+
+    # Set the line properties for the gridline..
+    $gridline->{_line} = $self->_get_line_properties( $args->{line} );
+
+    return $gridline;
+}
+
+
+###############################################################################
+#
 # _get_labels_properties()
 #
 # Convert user defined labels properties to the structure required internally.
@@ -1226,37 +1072,6 @@ sub _set_default_properties {
 
     my $self = shift;
 
-    $self->{_chartarea} = {
-        _visible          => 0,
-        _fg_color_index   => 0x4E,
-        _fg_color_rgb     => 0xFFFFFF,
-        _bg_color_index   => 0x4D,
-        _bg_color_rgb     => 0x000000,
-        _area_pattern     => 0x0000,
-        _area_options     => 0x0000,
-        _line_pattern     => 0x0005,
-        _line_weight      => 0xFFFF,
-        _line_color_index => 0x4D,
-        _line_color_rgb   => 0x000000,
-        _line_options     => 0x0008,
-    };
-
-    $self->{_plotarea} = {
-        _visible          => 1,
-        _fg_color_index   => 0x16,
-        _fg_color_rgb     => 0xC0C0C0,
-        _bg_color_index   => 0x4F,
-        _bg_color_rgb     => 0x000000,
-        _area_pattern     => 0x0001,
-        _area_options     => 0x0000,
-        _line_pattern     => 0x0000,
-        _line_weight      => 0x0000,
-        _line_color_index => 0x17,
-        _line_color_rgb   => 0x808080,
-        _line_options     => 0x0000,
-    };
-
-
     # Set the default axis properties.
     $self->{_x_axis}->{_defaults} = {
         num_format      => 'General',
@@ -1301,24 +1116,6 @@ sub _set_embedded_config_data {
     my $self = shift;
 
     $self->{_embedded} = 1;
-
-    # TODO. We may be able to remove this after refactoring.
-
-    $self->{_chartarea} = {
-        _visible          => 1,
-        _fg_color_index   => 0x4E,
-        _fg_color_rgb     => 0xFFFFFF,
-        _bg_color_index   => 0x4D,
-        _bg_color_rgb     => 0x000000,
-        _area_pattern     => 0x0001,
-        _area_options     => 0x0001,
-        _line_pattern     => 0x0000,
-        _line_weight      => 0x0000,
-        _line_color_index => 0x4D,
-        _line_color_rgb   => 0x000000,
-        _line_options     => 0x0009,
-    };
-
 }
 
 
@@ -1895,6 +1692,9 @@ sub _write_cat_axis {
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines( $x_axis->{_major_gridlines} );
 
+    # Write the c:minorGridlines element.
+    $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
+
     # Write the axis title elements.
     my $title;
     if ( $title = $x_axis->{_formula} ) {
@@ -1990,6 +1790,9 @@ sub _write_val_axis {
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines( $y_axis->{_major_gridlines} );
 
+    # Write the c:minorGridlines element.
+    $self->_write_minor_gridlines( $y_axis->{_minor_gridlines} );
+
     # Write the axis title elements.
     my $title;
     if ( $title = $y_axis->{_formula} ) {
@@ -2080,6 +1883,9 @@ sub _write_cat_val_axis {
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines( $x_axis->{_major_gridlines} );
 
+    # Write the c:minorGridlines element.
+    $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
+
     # Write the axis title elements.
     my $title;
     if ( $title = $x_axis->{_formula} ) {
@@ -2168,6 +1974,9 @@ sub _write_date_axis {
 
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines( $x_axis->{_major_gridlines} );
+
+    # Write the c:minorGridlines element.
+    $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
 
     # Write the axis title elements.
     my $title;
@@ -2597,7 +2406,45 @@ sub _write_major_gridlines {
     return unless $gridlines;
     return unless $gridlines->{_visible};
 
-    $self->xml_empty_tag( 'c:majorGridlines' );
+    if ( $gridlines->{_line}->{_defined} ) {
+        $self->xml_start_tag( 'c:majorGridlines' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $gridlines );
+
+        $self->xml_end_tag( 'c:majorGridlines' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:majorGridlines' );
+    }
+}
+
+
+##############################################################################
+#
+# _write_minor_gridlines()
+#
+# Write the <c:minorGridlines> element.
+#
+sub _write_minor_gridlines {
+
+    my $self      = shift;
+    my $gridlines = shift;
+
+    return unless $gridlines;
+    return unless $gridlines->{_visible};
+
+    if ( $gridlines->{_line}->{_defined} ) {
+        $self->xml_start_tag( 'c:minorGridlines' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $gridlines );
+
+        $self->xml_end_tag( 'c:minorGridlines' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:minorGridlines' );
+    }
 }
 
 
@@ -3515,7 +3362,7 @@ sub _write_a_ln {
         # Write the a:noFill element.
         $self->_write_a_no_fill();
     }
-    else {
+    elsif ( $line->{color} ) {
 
         # Write the a:solidFill element.
         $self->_write_a_solid_fill( $line );
@@ -4387,6 +4234,7 @@ The properties that can be set are:
     log_base
     label_position
     major_gridlines
+    minor_gridlines
     visible
 
 These are explained below. Some properties are only applicable to value or category axes, as indicated. See L<Value and Category Axes> for an explanation of Excel's distinction between the axis types.
@@ -4488,9 +4336,29 @@ Set the "Axis labels" position for the axis. The following positions are availab
 
 =item * C<major_gridlines>
 
-Configure the major gridlines for the axis. The only option currently available is used to show or hide the major gridlines.
+Configure the major gridlines for the axis. The available properties are:
 
-    $chart->set_x_axis( major_gridlines => { visible => 1 } );
+    visible
+    line
+
+For example:
+
+    $chart->set_x_axis(
+        major_gridlines => {
+            visible => 1,
+            line    => { color => 'red', width => 1.25, dash_type => 'dash' }
+        }
+    );
+
+The C<visible> property is usually on for the X-axis but it depends on the type of chart.
+
+The C<line> property sets the gridline properites such as colour and width. See the L</CHART FORMATTING> section below.
+
+=item * C<minor_gridlines>
+
+This takes the same options as C<major_gridlines> above.
+
+The minor gridline C<visible> property is off by default for all chart types.
 
 =item * C<visible>
 
@@ -4633,7 +4501,7 @@ Display data in hidden rows or columns on the chart.
 
 =head1 CHART FORMATTING
 
-The following chart formatting properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart lines, column fill areas, plot area borders, markers and other chart elements documented above.
+The following chart formatting properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart lines, column fill areas, plot area borders, markers, gridlines and other chart elements documented above.
 
     line
     border
@@ -5220,7 +5088,7 @@ Features that are on the TODO list and will be added are:
 
 =item * Additional formatting options. For now try the C<set_style()> method.
 
-=item * More axis controls and gridlines.
+=item * More axis controls.
 
 =item * 3D charts.
 
