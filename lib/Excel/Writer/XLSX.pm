@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.58';
+our $VERSION = '0.59';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.58 of Excel::Writer::XLSX, released November 23, 2012.
+This document refers to version 0.59 of Excel::Writer::XLSX, released November 26, 2012.
 
 
 
@@ -143,6 +143,7 @@ The Excel::Writer::XLSX module provides an object oriented interface to a new Ex
     add_format()
     add_chart()
     add_shape()
+    add_vba_project()
     close()
     set_properties()
     define_name()
@@ -332,6 +333,8 @@ Specifies that the Chart object will be inserted in a worksheet via the C<insert
 
 See Excel::Writer::XLSX::Chart for details on how to configure the chart object once it is created. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
+
+
 =head2 add_shape( %properties )
 
 The C<add_shape()> method can be used to create new shapes that may be inserted into a worksheet.
@@ -353,6 +356,30 @@ You can either define the properties at creation time via a hash of property val
 See L<Excel::Writer::XLSX::Shape> for details on how to configure the shape object once it is created.
 
 See also the C<shape*.pl> programs in the examples directory of the distro.
+
+
+
+=head2 add_vba_project( 'vbaProject.bin' )
+
+The C<add_vba_project()> method can be used to add macros or functions to an Excel::Writer::XLSX file using a binary VBA project file that has been extracted from an existing Excel C<xlsm> file.
+
+    my $workbook  = Excel::Writer::XLSX->new( 'file.xlsm' );
+
+    $workbook->add_vba_project( './vbaProject.bin' );
+
+The supplied C<extract_vba> utility can be used to extract the required C<vbaProject.bin> file from an existing Excel file:
+
+    $ extract_vba file.xlsm
+    Extracted 'vbaProject.bin' successfully
+
+Note, Excel uses the file extension C<xlsm> instead of C<xlsx> for files that contain macros. It is advisable to follow the same convention.
+
+It isn't currently possible to link the embedded macros to worksheet form elements but macro enabled buttons may be added in time. User defined functions in the VBA project can be called from a worksheet.
+
+See also the C<add_vba_project.pl> example file.
+
+
+
 
 =head2 close()
 
@@ -5902,6 +5929,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
 
     Intermediate
     ============
+    add_vba_project.pl      An example of adding macros from an existing file.
     autofilter.pl           Examples of worksheet autofilters.
     array_formula.pl        Examples of how to write array formulas.
     cgi.pl                  A simple CGI program.
@@ -6013,6 +6041,7 @@ It supports all of the features of Spreadsheet::WriteExcel with some minor diffe
     add_format()                Yes
     add_chart()                 Yes
     add_shape()                 Yes. Not in Spreadsheet::WriteExcel.
+    add_vba_project()           Yes. Not in Spreadsheet::WriteExcel.
     close()                     Yes
     set_properties()            Yes
     define_name()               Yes
@@ -6374,8 +6403,6 @@ The roadmap is as follows:
 =item * Excel::Reader::XLSX and Excel::Rewriter::XLSX. Hopefully.
 
 =item * Pivot tables, maybe.
-
-=item * Macros, why not.
 
 =back
 

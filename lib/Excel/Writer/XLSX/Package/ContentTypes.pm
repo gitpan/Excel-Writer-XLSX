@@ -21,7 +21,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.58';
+our $VERSION = '0.59';
 
 
 ###############################################################################
@@ -293,6 +293,27 @@ sub _add_table_name {
 
     $self->_add_override( $table_name,
         $app_document . 'spreadsheetml.table+xml' );
+}
+
+
+###############################################################################
+#
+# _add_vba_project()
+#
+# Add a vbaProject to the ContentTypes defaults.
+#
+sub _add_vba_project {
+
+    my $self = shift;
+
+    # Change the workbook.xml content-type from xlsx to xlsm.
+    for my $aref ( @{ $self->{_overrides} } ) {
+        if ( $aref->[0] eq '/xl/workbook.xml' ) {
+            $aref->[1] = 'application/vnd.ms-excel.sheet.macroEnabled.main+xml';
+        }
+    }
+
+    $self->_add_default( 'bin', 'application/vnd.ms-office.vbaProject' );
 }
 
 

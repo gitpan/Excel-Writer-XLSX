@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.58';
+our $VERSION = '0.59';
 
 
 ###############################################################################
@@ -786,6 +786,27 @@ sub set_properties {
 
 
     $self->{_doc_properties} = \%param;
+}
+
+
+###############################################################################
+#
+# add_vba_project()
+#
+# Add a vbaProject binary to the XLSX file.
+#
+sub add_vba_project {
+
+    my $self = shift;
+    my $vba_project = shift;
+
+    croak "No vbaProject.bin specified in add_vba_project()"
+      if not $vba_project;
+
+    croak "Couldn't locate $vba_project in add_vba_project(): $!"
+      unless -e $vba_project;
+
+    $self->{_vba_project} = $vba_project;
 }
 
 
@@ -2004,6 +2025,10 @@ sub _write_file_version {
         'lowestEdited' => $lowest_edited,
         'rupBuild'     => $rup_build,
     );
+
+    if ( $self->{_vba_project} ) {
+        push @attributes, codeName => '{37E998C4-C9E5-D4B9-71C8-EB1FF731991C}';
+    }
 
     $self->xml_empty_tag( 'fileVersion', @attributes );
 }

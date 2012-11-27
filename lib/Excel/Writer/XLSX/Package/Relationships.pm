@@ -20,7 +20,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.58';
+our $VERSION = '0.59';
 
 our $schema_root     = 'http://schemas.openxmlformats.org';
 our $package_schema  = $schema_root . '/package/2006/relationships';
@@ -101,7 +101,27 @@ sub _add_package_relationship {
     my $target = shift;
 
     $type   = $package_schema . $type;
-    $target = $target . '.xml';
+    $target = $target;
+
+    push @{ $self->{_rels} }, [ $type, $target ];
+}
+
+
+###############################################################################
+#
+# _add_ms_package_relationship()
+#
+# Add container relationship to XLSX .rels xml files. Uses MS schema.
+#
+sub _add_ms_package_relationship {
+
+    my $self   = shift;
+    my $type   = shift;
+    my $target = shift;
+    my $schema = 'http://schemas.microsoft.com/office/2006/relationships';
+
+    $type   = $schema . $type;
+    $target = $target;
 
     push @{ $self->{_rels} }, [ $type, $target ];
 }
