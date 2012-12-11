@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.60';
+our $VERSION = '0.61';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.60 of Excel::Writer::XLSX, released December 5, 2012.
+This document refers to version 0.61 of Excel::Writer::XLSX, released December 11, 2012.
 
 
 
@@ -639,6 +639,7 @@ The following methods are available through a new worksheet:
     protect()
     set_selection()
     set_row()
+    set_default_row()
     set_column()
     outline_settings()
     freeze_panes()
@@ -1170,10 +1171,20 @@ B<Note>, this behaviour is different from Spreadsheet::WriteExcel which provides
 
 There are four web style URI's supported: C<http://>, C<https://>, C<ftp://> and C<mailto:>:
 
-    $worksheet->write_url( 0, 0, 'ftp://www.perl.org/', $format );
-    $worksheet->write_url( 1, 0, 'http://www.perl.com/', $format, 'Perl' );
+    $worksheet->write_url( 0, 0, 'ftp://www.perl.org/',       $format );
     $worksheet->write_url( 'A3', 'http://www.perl.com/',      $format );
     $worksheet->write_url( 'A4', 'mailto:jmcnamara@cpan.org', $format );
+
+You can display an alternative string using the C<$label> parameter:
+
+    $worksheet->write_url( 1, 0, 'http://www.perl.com/', $format, 'Perl' );
+
+If you wish to have some other cell data such as a number or a formula you can overwrite the cell using another call to C<write_*()>:
+
+    $worksheet->write_url( 'A1', 'http://www.perl.com/' );
+
+    # Overwrite the URL string with a formula. The cell is still a link.
+    $worksheet->write_formula( 'A1', '=1+1', $format );
 
 There are two local URIs supported: C<internal:> and C<external:>. These are used for hyperlinks to internal worksheet references or external workbook and worksheet references:
 
@@ -1208,7 +1219,7 @@ Finally, you can avoid most of these quoting problems by using forward slashes. 
     $worksheet->write_url( 'A14', "external:c:/temp/foo.xlsx" );
     $worksheet->write_url( 'A15', 'external://NETWORK/share/foo.xlsx' );
 
-Note: Excel::Writer::XLSX will escape the following charaters in URLs as requird by Excel: C<< \s " < > \ [  ] ` ^ { } >> unless the URL already contains C<%xx> style escapes. In which case it is assumed that the URL was escaped correctly by the user and will by passed directly to Excel.
+Note: Excel::Writer::XLSX will escape the following characters in URLs as required by Excel: C<< \s " < > \ [  ] ` ^ { } >> unless the URL already contains C<%xx> style escapes. In which case it is assumed that the URL was escaped correctly by the user and will by passed directly to Excel.
 
 See also, the note about L</Cell notation>.
 
@@ -1550,11 +1561,11 @@ See the C<write_handler 1-4> programs in the C<examples> directory for further e
 
 
 
-=head2 insert_image( $row, $col, $filename, $x, $y, $scale_x, $scale_y )
+=head2 insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
 
 Partially supported. Currently only works for 96 dpi images.
 
-This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
     $worksheet1->insert_image( 'A1', 'perl.bmp' );
     $worksheet2->insert_image( 'A1', '../images/perl.bmp' );
@@ -1566,7 +1577,7 @@ The parameters C<$x> and C<$y> can be used to specify an offset from the top lef
 
 The offsets can be greater than the width or height of the underlying cell. This can be occasionally useful if you wish to align two or more images relative to the same cell.
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted image horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted image horizontally and vertically:
 
     # Scale the inserted image: width x 2.0, height x 0.8
     $worksheet->insert_image( 'A1', 'perl.bmp', 0, 0, 2, 0.8 );
@@ -1578,7 +1589,7 @@ BMP images must be 24 bit, true colour, bitmaps. In general it is best to avoid 
 
 
 
-=head2 insert_chart( $row, $col, $chart, $x, $y, $scale_x, $scale_y )
+=head2 insert_chart( $row, $col, $chart, $x, $y, $x_scale, $y_scale )
 
 This method can be used to insert a Chart object into a worksheet. The Chart must be created by the C<add_chart()> Workbook method and it must have the C<embedded> option set.
 
@@ -1592,18 +1603,18 @@ This method can be used to insert a Chart object into a worksheet. The Chart mus
 
 See C<add_chart()> for details on how to create the Chart object and L<Excel::Writer::XLSX::Chart> for details on how to configure it. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
-The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
 The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
 
     $worksheet1->insert_chart( 'E2', $chart, 3, 3 );
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted chart horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted chart horizontally and vertically:
 
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_chart( 'E2', $chart, 0, 0, 1.2, 1.5 );
 
-=head2 insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+=head2 insert_shape( $row, $col, $shape, $x, $y, $x_scale, $y_scale )
 
 This method can be used to insert a Shape object into a worksheet. The Shape must be created by the C<add_shape()> Workbook method.
 
@@ -1618,13 +1629,13 @@ This method can be used to insert a Shape object into a worksheet. The Shape mus
 
 See C<add_shape()> for details on how to create the Shape object and L<Excel::Writer::XLSX::Shape> for details on how to configure it.
 
-The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
 The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
 
     $worksheet1->insert_shape( 'E2', $chart, 3, 3 );
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted shape horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted shape horizontally and vertically:
 
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_shape( 'E2', $shape, 0, 0, 1.2, 1.5 );
@@ -2049,6 +2060,21 @@ For collapsed outlines you should also indicate which row has the collapsed C<+>
 For a more complete example see the C<outline.pl> and C<outline_collapsed.pl> programs in the examples directory of the distro.
 
 Excel allows up to 7 outline levels. Therefore the C<$level> parameter should be in the range C<0 E<lt>= $level E<lt>= 7>.
+
+
+
+
+=head2 set_default_row( $height, $hide_unused_rows )
+
+The C<set_default_row()> method is used to set the limited number of default row properties allowed by Excel. These are the default height and the option to hide unused rows.
+
+    $worksheet->set_default_row( 24 );  # Set the default row height to 24.
+
+The option to hide unused rows is used by Excel as an optimisation so that the user can hide a large number of rows without generating a very large file with an entry for each hidden row.
+
+    $worksheet->set_default_row( undef, 1 );
+
+See the C<hide_row_col.pl> example program.
 
 
 
@@ -6044,6 +6070,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     diag_border.pl          A simple example of diagonal cell borders.
     filehandle.pl           Examples of working with filehandles.
     headers.pl              Examples of worksheet headers and footers.
+    hide_row_col.pl         Example of hiding rows and columns.
     hide_sheet.pl           Simple example of hiding a worksheet.
     hyperlink1.pl           Shows how to create web hyperlinks.
     hyperlink2.pl           Examples of internal and external hyperlinks.
@@ -6183,6 +6210,7 @@ It supports all of the features of Spreadsheet::WriteExcel with some minor diffe
     set_selection()             Yes
     set_row()                   Yes.
     set_column()                Yes.
+    set_default_row()           Yes. Not in Spreadsheet::WriteExcel.
     outline_settings()          Yes
     freeze_panes()              Yes
     split_panes()               Yes

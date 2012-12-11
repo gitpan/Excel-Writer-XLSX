@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.60';
+our $VERSION = '0.61';
 
 
 ###############################################################################
@@ -96,6 +96,12 @@ sub new {
     $self->{_show_blanks}       = 'gap';
     $self->{_show_hidden_data}  = 0;
     $self->{_show_crosses}      = 1;
+    $self->{_width}             = 480;
+    $self->{_height}            = 288;
+    $self->{_x_scale}           = 1;
+    $self->{_y_scale}           = 1;
+    $self->{_x_offset}          = 0;
+    $self->{_y_offset}          = 0;
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -428,6 +434,27 @@ sub show_hidden_data {
     my $self = shift;
 
     $self->{_show_hidden_data} = 1;
+}
+
+
+###############################################################################
+#
+# size()
+#
+# Set dimensions or scale for the chart.
+#
+sub size {
+
+    my $self = shift;
+    my %args = @_;
+
+    $self->{_width}    = $args{width}    if $args{width};
+    $self->{_height}   = $args{height}   if $args{height};
+    $self->{_x_scale}  = $args{x_scale}  if $args{x_scale};
+    $self->{_y_scale}  = $args{y_scale}  if $args{y_scale};
+    $self->{_x_offset} = $args{x_offset} if $args{x_offset};
+    $self->{_x_offset} = $args{y_offset} if $args{y_offset};
+
 }
 
 
@@ -4507,7 +4534,7 @@ For example:
 
 The C<visible> property is usually on for the X-axis but it depends on the type of chart.
 
-The C<line> property sets the gridline properites such as colour and width. See the L</CHART FORMATTING> section below.
+The C<line> property sets the gridline properties such as colour and width. See the L</CHART FORMATTING> section below.
 
 =item * C<minor_gridlines>
 
@@ -4555,6 +4582,33 @@ The properties that can be set are the same as for C<set_x_axis>, see above.
 The default properties for this axis are:
 
     major_gridlines => { visible => 0 }
+
+
+=head2 size()
+
+The C<size()> method is used to set the dimensions of the chart. The size properties that can be set are:
+
+     width
+     height
+     x_scale
+     y_scale
+     x_offset
+     y_offset
+
+The C<width> and C<height> are in pixels. The default chart width is 480 pixels and the default height is 288 pixels. The size of the chart can be modified by setting the C<width> and C<height> or by setting the C<x_scale> and C<y_scale>:
+
+    $chart->size( width => 720, height => 576 );
+
+    # Same as:
+
+    $chart->size( x_scale => 1.5, y_scale => 2 );
+
+The C<x_offset> and C<y_offset> position the top left corner of the chart in the cell that it is inserted into.
+
+
+Note: the C<x_scale>, C<y_scale>, C<x_offset> and C<y_offset> parameters can also be set via the C<insert_chart()> method:
+
+    $worksheet->insert_chart( 'E2', $chart, 2, 4, 1.5, 2 );
 
 
 =head2 set_title()

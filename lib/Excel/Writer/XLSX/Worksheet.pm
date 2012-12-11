@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.60';
+our $VERSION = '0.61';
 
 
 ###############################################################################
@@ -146,6 +146,9 @@ sub new {
     $self->{_outline_right}     = 1;
     $self->{_outline_on}        = 1;
     $self->{_outline_changed}   = 0;
+
+    $self->{_default_row_height} = 15;
+    $self->{_default_row_zeroed} = 0;
 
     $self->{_names} = {};
 
@@ -325,7 +328,7 @@ sub _assemble_xml_file {
     # Write the tableParts element.
     $self->_write_table_parts();
 
-    # Write the estLst and sparklines.
+    # Write the extLst and sparklines.
     $self->_write_ext_sparklines();
 
     # Close the worksheet tag.
@@ -2566,15 +2569,15 @@ sub write_url {
         $str_error = -3;
     }
 
-    # Store the URL displayed text in the shared string table.
-    my $index = $self->_get_shared_string_index( $str );
+    # Copy string for use in hyperlink elements.
+    my $url_str = $str;
 
     # External links to URLs and to other Excel workbooks have slightly
     # different characteristics that we have to account for.
     if ( $link_type == 1 ) {
 
         # Escape URL unless it looks already escaped.
-        if ($url !~ /%[0-9a-fA-F]{2}/) {
+        if ( $url !~ /%[0-9a-fA-F]{2}/ ) {
 
             # Escape the URL escape symbol.
             $url =~ s/%/%25/g;
@@ -2587,7 +2590,7 @@ sub write_url {
         }
 
         # Ordinary URL style external links don't have a "location" string.
-        $str = undef;
+        $url_str = undef;
     }
     elsif ( $link_type == 3 ) {
 
@@ -2595,7 +2598,7 @@ sub write_url {
         # The URL will look something like 'c:\temp\file.xlsx#Sheet!A1'.
         # We need the part to the left of the # as the URL and the part to
         # the right as the "location" string (if it exists).
-        ( $url, $str ) = split /#/, $url;
+        ( $url, $url_str ) = split /#/, $url;
 
         # Add the file:/// URI to the $url if non-local.
         if (
@@ -2637,10 +2640,16 @@ sub write_url {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->{$row}->{$col} =
+    # Write the hyperlink string.
+    $self->write_string( $row, $col, $str, $xf );
 
-      # 0      1       2    3           4     5     6
-      [ $type, $index, $xf, $link_type, $url, $str, $tip ];
+    # Store the hyperlink data in a separate structure.
+    $self->{_hyperlinks}->{$row}->{$col} = {
+        _link_type => $link_type,
+        _url       => $url,
+        _str       => $url_str,
+        _tip       => $tip
+    };
 
     return $str_error;
 }
@@ -2857,6 +2866,9 @@ sub set_row {
 
     return unless defined $row;    # Ensure at least $row is specified.
 
+    # Get the default row height.
+    my $default_height = $self->{_default_row_height};
+
     # Use min col in _check_dimensions(). Default to 0 if undefined.
     if ( defined $self->{_dim_colmin} ) {
         $min_col = $self->{_dim_colmin};
@@ -2865,12 +2877,12 @@ sub set_row {
     # Check that row is valid.
     return -2 if $self->_check_dimensions( $row, $min_col );
 
-    $height = 15 if !defined $height;
+    $height = $default_height if !defined $height;
 
     # If the height is 0 the row is hidden and the height is the default.
     if ( $height == 0 ) {
         $hidden = 1;
-        $height = 15;
+        $height = $default_height;
     }
 
     # Set the limits for the outline levels (0 <= x <= 7).
@@ -2889,6 +2901,31 @@ sub set_row {
 
     # Store the row sizes for use when calculating image vertices.
     $self->{_row_sizes}->{$row} = $height;
+}
+
+
+###############################################################################
+#
+# set_default_row()
+#
+# Set the default row properties
+#
+sub set_default_row {
+
+    my $self        = shift;
+    my $height      = shift || 15;
+    my $zero_height = shift || 0;
+
+    if ( $height != 15 ) {
+        $self->{_default_row_height} = $height;
+
+        # Store the row change to allow optimisations.
+        $self->{_row_size_changed} = 1;
+    }
+
+    if ( $zero_height ) {
+        $self->{_default_row_zeroed} = 1;
+    }
 }
 
 
@@ -4119,7 +4156,7 @@ sub add_sparkline {
         # Remove the = from xl_range_formula(.
         $range =~ s{^=}{};
 
-        # Convert a simiple range into a full Sheet1!A1:D1 range.
+        # Convert a simple range into a full Sheet1!A1:D1 range.
         if ( $range !~ /!/ ) {
             $range = $sheetname . "!" . $range;
         }
@@ -4422,7 +4459,7 @@ sub _cell_to_rowcol {
 # _xl_rowcol_to_cell($row, $col)
 #
 # Optimised version of xl_rowcol_to_cell from Utility.pm for the inner loop
-# of write_cell().
+# of _write_cell().
 #
 
 our @col_names = ( 'A' .. 'XFD' );
@@ -4824,7 +4861,7 @@ sub _size_row {
         }
     }
     else {
-        $pixels = 20;
+        $pixels = int( 4 / 3 * $self->{_default_row_height} );
     }
 
     return $pixels;
@@ -4927,7 +4964,7 @@ sub _get_shared_string_index {
 
 ###############################################################################
 #
-# insert_chart( $row, $col, $chart, $x, $y, $scale_x, $scale_y )
+# insert_chart( $row, $col, $chart, $x, $y, $x_scale, $y_scale )
 #
 # Insert a chart into a worksheet. The $chart argument should be a Chart
 # object or else it is assumed to be a filename of an external binary file.
@@ -4947,8 +4984,8 @@ sub insert_chart {
     my $chart    = $_[2];
     my $x_offset = $_[3] || 0;
     my $y_offset = $_[4] || 0;
-    my $scale_x  = $_[5] || 1;
-    my $scale_y  = $_[6] || 1;
+    my $x_scale  = $_[5] || 1;
+    my $y_scale  = $_[6] || 1;
 
     croak "Insufficient arguments in insert_chart()" unless @_ >= 3;
 
@@ -4964,8 +5001,14 @@ sub insert_chart {
 
     }
 
+    # Use the values set with $chart->size(), if any.
+    $x_scale  = $chart->{_x_scale}  if $chart->{_x_scale} != 1;
+    $y_scale  = $chart->{_y_scale}  if $chart->{_y_scale} != 1;
+    $x_offset = $chart->{_x_offset} if $chart->{_x_offset};
+    $x_offset = $chart->{_y_offset} if $chart->{_y_offset};
+
     push @{ $self->{_charts} },
-      [ $row, $col, $chart, $x_offset, $y_offset, $scale_x, $scale_y ];
+      [ $row, $col, $chart, $x_offset, $y_offset, $x_scale, $y_scale ];
 }
 
 
@@ -4983,18 +5026,21 @@ sub _prepare_chart {
     my $drawing_id   = shift;
     my $drawing_type = 1;
 
-    my ( $row, $col, $chart, $x_offset, $y_offset, $scale_x, $scale_y ) =
+    my ( $row, $col, $chart, $x_offset, $y_offset, $x_scale, $y_scale ) =
       @{ $self->{_charts}->[$index] };
 
     $chart->{_id} = $chart_id - 1;
 
+    # Use user specified dimensions, if any.
+    my $width  = $chart->{_width}  if $chart->{_width};
+    my $height = $chart->{_height} if $chart->{_height};
 
-    my $width  = int( 0.5 + ( 480 * $scale_x ) );
-    my $height = int( 0.5 + ( 288 * $scale_y ) );
+    $width  = int( 0.5 + ( $width  * $x_scale ) );
+    $height = int( 0.5 + ( $height * $y_scale ) );
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height );
+        $height, 0 );
 
     # Set the chart name for the embedded object if it has been specified.
     my $name = $chart->{_chart_name};
@@ -5086,11 +5132,6 @@ sub _get_range_data {
                     # Store an array formula.
                     push @data, $cell->[4] || 0;
                 }
-                elsif ( $type eq 'l' ) {
-
-                    # Store the string part a hyperlink.
-                    push @data, { 'sst_id' => $token };
-                }
                 elsif ( $type eq 'b' ) {
 
                     # Store a empty cell.
@@ -5111,7 +5152,7 @@ sub _get_range_data {
 
 ###############################################################################
 #
-# insert_image( $row, $col, $filename, $x, $y, $scale_x, $scale_y )
+# insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
 #
 # Insert an image into the worksheet.
 #
@@ -5129,14 +5170,14 @@ sub insert_image {
     my $image    = $_[2];
     my $x_offset = $_[3] || 0;
     my $y_offset = $_[4] || 0;
-    my $scale_x  = $_[5] || 1;
-    my $scale_y  = $_[6] || 1;
+    my $x_scale  = $_[5] || 1;
+    my $y_scale  = $_[6] || 1;
 
     croak "Insufficient arguments in insert_image()" unless @_ >= 3;
     croak "Couldn't locate $image: $!" unless -e $image;
 
     push @{ $self->{_images} },
-      [ $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ];
+      [ $row, $col, $image, $x_offset, $y_offset, $x_scale, $y_scale ];
 }
 
 
@@ -5159,11 +5200,11 @@ sub _prepare_image {
     my $drawing_type = 2;
     my $drawing;
 
-    my ( $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ) =
+    my ( $row, $col, $image, $x_offset, $y_offset, $x_scale, $y_scale ) =
       @{ $self->{_images}->[$index] };
 
-    $width  *= $scale_x;
-    $height *= $scale_y;
+    $width  *= $x_scale;
+    $height *= $y_scale;
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
@@ -5199,7 +5240,7 @@ sub _prepare_image {
 
 ###############################################################################
 #
-# insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+# insert_shape( $row, $col, $shape, $x, $y, $x_scale, $y_scale )
 #
 # Insert a shape into the worksheet.
 #
@@ -6211,11 +6252,21 @@ sub _write_sheet_format_pr {
 
     my $self               = shift;
     my $base_col_width     = 10;
-    my $default_row_height = 15;
+    my $default_row_height = $self->{_default_row_height};
     my $row_level          = $self->{_outline_row_level};
     my $col_level          = $self->{_outline_col_level};
+    my $zero_height        = $self->{_default_row_zeroed};
 
     my @attributes = ( 'defaultRowHeight' => $default_row_height );
+
+    if ( $self->{_default_row_height} != 15 ) {
+        push @attributes, ( 'customHeight' => 1 );
+    }
+
+    if ( $self->{_default_row_zeroed} ) {
+        push @attributes, ( 'zeroHeight' => 1 );
+    }
+
     push @attributes, ( 'outlineLevelRow' => $row_level ) if $row_level;
     push @attributes, ( 'outlineLevelCol' => $col_level ) if $col_level;
 
@@ -6362,6 +6413,7 @@ sub _write_optimized_sheet_data {
         $self->xml_empty_tag( 'sheetData' );
     }
     else {
+
         $self->xml_start_tag( 'sheetData' );
 
         my $xlsx_fh = $self->xml_get_fh();
@@ -6435,7 +6487,7 @@ sub _write_rows {
         else {
 
             # Row attributes only.
-            $self->_write_empty_row( $row_num, undef,
+            $self->_write_empty_row( $row_num, $span,
                 @{ $self->{_set_rows}->{$row_num} } );
         }
     }
@@ -6593,7 +6645,7 @@ sub _write_row {
     my $empty_row = shift || 0;
     my $xf_index  = 0;
 
-    $height = 15 if !defined $height;
+    $height = $self->{_default_row_height} if !defined $height;
 
     my @attributes = ( 'r' => $r + 1 );
 
@@ -6755,36 +6807,6 @@ sub _write_cell {
         $self->_write_cell_array_formula( $token, $cell->[3] );
         $self->_write_cell_value( $cell->[4] );
         $self->xml_end_tag( 'c' );
-    }
-    elsif ( $type eq 'l' ) {
-        my $link_type = $cell->[3];
-
-        # Write the string part a hyperlink.
-        push @attributes, ( 't' => 's' );
-
-        $self->xml_start_tag( 'c', @attributes );
-        $self->_write_cell_value( $token );
-        $self->xml_end_tag( 'c' );
-
-        if ( $link_type == 1 ) {
-
-            # External link with rel file relationship.
-            push @{ $self->{_hlink_refs} },
-              [
-                $link_type,            $row,       $col,
-                ++$self->{_rel_count}, $cell->[5], $cell->[6]
-              ];
-
-            push @{ $self->{_external_hyper_links} },
-              [ '/hyperlink', $cell->[4], 'External' ];
-        }
-        elsif ( $link_type ) {
-
-            # External link with rel file relationship.
-            push @{ $self->{_hlink_refs} },
-              [ $link_type, $row, $col, $cell->[4], $cell->[5], $cell->[6] ];
-        }
-
     }
     elsif ( $type eq 'b' ) {
 
@@ -7420,16 +7442,75 @@ sub _write_custom_filter {
 #
 # _write_hyperlinks()
 #
-# Write the <hyperlinks> element. The attributes are different for internal
-# and external links.
+# Process any stored hyperlinks in row/col order and write the <hyperlinks>
+# element. The attributes are different for internal and external links.
 #
 sub _write_hyperlinks {
 
-    my $self       = shift;
-    my @hlink_refs = @{ $self->{_hlink_refs} };
+    my $self = shift;
+    my @hlink_refs;
 
-    return unless @hlink_refs;
+    # Sort the hyperlinks into row order.
+    my @row_nums = sort { $a <=> $b } keys %{ $self->{_hyperlinks} };
 
+    # Exit if there are no hyperlinks to process.
+    return if !@row_nums;
+
+    # Iterate over the rows.
+    for my $row_num ( @row_nums ) {
+
+        # Sort the hyperlinks into column order.
+        my @col_nums = sort { $a <=> $b }
+          keys %{ $self->{_hyperlinks}->{$row_num} };
+
+        # Iterate over the columns.
+        for my $col_num ( @col_nums ) {
+
+            # Get the link data for this cell.
+            my $link      = $self->{_hyperlinks}->{$row_num}->{$col_num};
+            my $link_type = $link->{_link_type};
+
+
+            # If the cell isn't a string then we have to add the url as
+            # the string to display.
+            my $display;
+            if (   $self->{_table}
+                && $self->{_table}->{$row_num}
+                && $self->{_table}->{$row_num}->{$col_num} )
+            {
+                my $cell = $self->{_table}->{$row_num}->{$col_num};
+                $display = $link->{_url} if $cell->[0] ne 's';
+            }
+
+
+            if ( $link_type == 1 ) {
+
+                # External link with rel file relationship.
+                push @hlink_refs,
+                  [
+                    $link_type,    $row_num,
+                    $col_num,      ++$self->{_rel_count},
+                    $link->{_str}, $display,
+                    $link->{_tip}
+                  ];
+
+                # Links for use by the packager.
+                push @{ $self->{_external_hyper_links} },
+                  [ '/hyperlink', $link->{_url}, 'External' ];
+            }
+            else {
+
+                # Internal link with rel file relationship.
+                push @hlink_refs,
+                  [
+                    $link_type,    $row_num,      $col_num,
+                    $link->{_url}, $link->{_str}, $link->{_tip}
+                  ];
+            }
+        }
+    }
+
+    # Write the hyperlink elements.
     $self->xml_start_tag( 'hyperlinks' );
 
     for my $aref ( @hlink_refs ) {
@@ -7460,6 +7541,7 @@ sub _write_hyperlink_external {
     my $col      = shift;
     my $id       = shift;
     my $location = shift;
+    my $display  = shift;
     my $tooltip  = shift;
 
     my $ref = xl_rowcol_to_cell( $row, $col );
@@ -7471,6 +7553,7 @@ sub _write_hyperlink_external {
     );
 
     push @attributes, ( 'location' => $location ) if defined $location;
+    push @attributes, ( 'display' => $display )   if defined $display;
     push @attributes, ( 'tooltip'  => $tooltip )  if defined $tooltip;
 
     $self->xml_empty_tag( 'hyperlink', @attributes );
