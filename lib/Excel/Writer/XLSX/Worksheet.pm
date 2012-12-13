@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.61';
+our $VERSION = '0.62';
 
 
 ###############################################################################
@@ -5001,7 +5001,7 @@ sub insert_chart {
 
     }
 
-    # Use the values set with $chart->size(), if any.
+    # Use the values set with $chart->set_size(), if any.
     $x_scale  = $chart->{_x_scale}  if $chart->{_x_scale} != 1;
     $y_scale  = $chart->{_y_scale}  if $chart->{_y_scale} != 1;
     $x_offset = $chart->{_x_offset} if $chart->{_x_offset};

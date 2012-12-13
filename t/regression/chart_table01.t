@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse ('(c)'), November 2012, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), Decemeber 2012, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -16,7 +16,7 @@ use Test::More tests => 1;
 #
 # Tests setup.
 #
-my $filename     = 'chart_size01.xlsx';
+my $filename     = 'chart_table01.xlsx';
 my $dir          = 't/regression/';
 my $got_filename = $dir . $filename;
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
@@ -28,7 +28,7 @@ my $ignore_elements = {};
 
 ###############################################################################
 #
-# Test Excel::Writer::XLSX chartarea properties.
+# Test Excel::Writer::XLSX chart axis table properties.
 #
 use Excel::Writer::XLSX;
 
@@ -37,7 +37,7 @@ my $worksheet = $workbook->add_worksheet();
 my $chart     = $workbook->add_chart( type => 'column', embedded => 1 );
 
 # For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart->{_axis_ids} = [ 61355904, 61365248 ];
+$chart->{_axis_ids} = [ 61355520, 61357056 ];
 
 my $data = [
     [ 1, 2, 3, 4,  5 ],
@@ -52,7 +52,8 @@ $chart->add_series( values => '=Sheet1!$A$1:$A$5' );
 $chart->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
-$chart->set_size( x_scale => 1.066666666, y_scale => 1.11111111 );
+# Test the default table.
+$chart->set_table();
 
 $worksheet->insert_chart( 'E9', $chart );
 

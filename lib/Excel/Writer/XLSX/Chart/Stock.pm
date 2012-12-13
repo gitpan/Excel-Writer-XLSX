@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.61';
+our $VERSION = '0.62';
 
 
 ###############################################################################
@@ -150,6 +150,9 @@ sub _write_plot_area {
         y_axis   => $self->{_y2_axis},
         axis_ids => $self->{_axis2_ids}
     );
+
+    # Write the c:dTable element.
+    $self->_write_d_table();
 
     # Write the c:spPr element for the plotarea formatting.
     $self->_write_sp_pr( $self->{_plotarea} );
