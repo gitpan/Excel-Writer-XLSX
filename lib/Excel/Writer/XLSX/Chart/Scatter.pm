@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.62';
+our $VERSION = '0.63';
 
 
 ###############################################################################
@@ -148,6 +148,9 @@ sub _write_ser {
 
     # Write the c:trendline element.
     $self->_write_trendline( $series->{_trendline} );
+
+    # Write the c:errBars element.
+    $self->_write_error_bars( $series->{_error_bars} );
 
     # Write the c:xVal element.
     $self->_write_x_val( $series );

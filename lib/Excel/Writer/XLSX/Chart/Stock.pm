@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.62';
+our $VERSION = '0.63';
 
 
 ###############################################################################
@@ -35,6 +35,7 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
     $self->{_show_crosses} = 0;
+    $self->{_hi_low_lines} = {};
 
     # Override and reset the default axis values.
     $self->{_x_axis}->{_defaults}->{num_format}  = 'dd/mm/yyyy';
@@ -92,8 +93,14 @@ sub _write_stock_chart {
     # Write the series elements.
     $self->_write_ser( $_ ) for @series;
 
+    # Write the c:dropLines element.
+    $self->_write_drop_lines();
+
     # Write the c:hiLowLines element.
     $self->_write_hi_low_lines() if $args{primary_axes};
+
+    # Write the c:upDownBars element.
+    $self->_write_up_down_bars();
 
     # Write the c:marker element.
     $self->_write_marker_value();
@@ -219,12 +226,23 @@ To create a simple Excel file with a Stock chart using Excel::Writer::XLSX:
     my $workbook  = Excel::Writer::XLSX->new( 'chart.xlsx' );
     my $worksheet = $workbook->add_worksheet();
 
-    my $chart     = $workbook->add_chart( type => 'stock' );
+    my $chart = $workbook->add_chart( type => 'stock' );
 
     # Add a series for each High-Low-Close.
-    $chart->add_series( categories => '=Sheet1!$A$2:$A$6', values => '=Sheet1!$B$2:$B$6' );
-    $chart->add_series( categories => '=Sheet1!$A$2:$A$6', values => '=Sheet1!$C$2:$C$6' );
-    $chart->add_series( categories => '=Sheet1!$A$2:$A$6', values => '=Sheet1!$D$2:$D$6' );
+    $chart->add_series(
+        categories => '=Sheet1!$A$2:$A$6',
+        values     => '=Sheet1!$B$2:$B$6'
+    );
+
+    $chart->add_series(
+        categories => '=Sheet1!$A$2:$A$6',
+        values     => '=Sheet1!$C$2:$C$6'
+    );
+
+    $chart->add_series(
+        categories => '=Sheet1!$A$2:$A$6',
+        values     => '=Sheet1!$D$2:$D$6'
+    );
 
     # Add the worksheet data the chart refers to.
     # ... See the full example below.

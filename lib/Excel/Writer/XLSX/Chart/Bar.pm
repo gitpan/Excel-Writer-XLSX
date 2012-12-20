@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.62';
+our $VERSION = '0.63';
 
 
 ###############################################################################
@@ -150,6 +150,15 @@ sub _write_bar_dir {
     $self->xml_empty_tag( 'c:barDir', @attributes );
 }
 
+
+##############################################################################
+#
+# _write_err_dir()
+#
+# Write the <c:errDir> element. Overridden from Chart class since it is not
+# used in Bar charts.
+#
+sub _write_err_dir {}
 
 1;
 

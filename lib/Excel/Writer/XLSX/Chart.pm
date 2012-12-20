@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.62';
+our $VERSION = '0.63';
 
 
 ###############################################################################
@@ -208,6 +208,10 @@ sub add_series {
     # Set the trendline properties for the series.
     my $trendline = $self->_get_trendline_properties( $arg{trendline} );
 
+    # Set the error bars properties for the series.
+    my $y_error_bars = $self->_get_error_bars_properties( $arg{y_error_bars} );
+    my $x_error_bars = $self->_get_error_bars_properties( $arg{x_error_bars} );
+
     # Set the labels properties for the series.
     my $labels = $self->_get_labels_properties( $arg{data_labels} );
 
@@ -235,6 +239,8 @@ sub add_series {
         _invert_if_neg => $invert_if_neg,
         _x2_axis       => $x2_axis,
         _y2_axis       => $y2_axis,
+        _error_bars =>
+          { _x_error_bars => $x_error_bars, _y_error_bars => $y_error_bars },
     );
 
     push @{ $self->{_series} }, \%arg;
@@ -491,6 +497,80 @@ sub set_table {
 
 ###############################################################################
 #
+# set_up_down_bars()
+#
+# Set properties for the chart up-down bars.
+#
+sub set_up_down_bars {
+
+    my $self = shift;
+    my %args = @_;
+
+    # Map border to line.
+    if ( defined $args{up}->{border} ) {
+        $args{up}->{line} = $args{up}->{border};
+    }
+    if ( defined $args{down}->{border} ) {
+        $args{down}->{line} = $args{down}->{border};
+    }
+
+    # Set the up and down bar properties.
+    my $up_line   = $self->_get_line_properties( $args{up}->{line} );
+    my $down_line = $self->_get_line_properties( $args{down}->{line} );
+    my $up_fill   = $self->_get_fill_properties( $args{up}->{fill} );
+    my $down_fill = $self->_get_fill_properties( $args{down}->{fill} );
+
+    $self->{_up_down_bars} = {
+        _up => {
+            _line => $up_line,
+            _fill => $up_fill,
+        },
+        _down => {
+            _line => $down_line,
+            _fill => $down_fill,
+        },
+    };
+}
+
+
+###############################################################################
+#
+# set_drop_lines()
+#
+# Set properties for the chart drop lines.
+#
+sub set_drop_lines {
+
+    my $self = shift;
+    my %args = @_;
+
+    # Set the drop line properties.
+    my $line = $self->_get_line_properties( $args{line} );
+
+    $self->{_drop_lines} = { _line => $line };
+}
+
+
+###############################################################################
+#
+# set_high_low_lines()
+#
+# Set properties for the chart high-low lines.
+#
+sub set_high_low_lines {
+
+    my $self = shift;
+    my %args = @_;
+
+    # Set the drop line properties.
+    my $line = $self->_get_line_properties( $args{line} );
+
+    $self->{_hi_low_lines} = { _line => $line };
+}
+
+
+###############################################################################
+#
 # Internal methods. The following section of methods are used for the internal
 # structuring of the Chart object and file format.
 #
@@ -559,7 +639,6 @@ sub _convert_axis_args {
 
     return $axis;
 }
-
 
 
 ###############################################################################
@@ -1026,6 +1105,75 @@ sub _get_trendline_properties {
     $trendline->{_fill} = $fill;
 
     return $trendline;
+}
+
+
+###############################################################################
+#
+# _get_error_bars_properties()
+#
+# Convert user defined error bars properties to structure required internally.
+#
+sub _get_error_bars_properties {
+
+    my $self = shift;
+    my $args = shift;
+
+    return unless $args;
+
+    # Default values.
+    my $error_bars = {
+        _type      => 'fixedVal',
+        _value     => 1,
+        _endcap    => 1,
+        _direction => 'both'
+    };
+
+    my %types = (
+        fixed              => 'fixedVal',
+        percentage         => 'percentage',
+        standard_deviation => 'stdDev',
+        standard_error     => 'stdErr',
+    );
+
+    # Check the error bars type.
+    my $error_type = $args->{type};
+
+    if ( exists $types{$error_type} ) {
+        $error_bars->{_type} = $types{$error_type};
+    }
+    else {
+        warn "Unknown error bars type '$error_type'\n";
+        return;
+    }
+
+    # Set the value for error types that require it.
+    if ( defined $args->{value} ) {
+        $error_bars->{_value} = $args->{value};
+    }
+
+    # Set the end-cap style.
+    if ( defined $args->{end_style} ) {
+        $error_bars->{_endcap} = $args->{end_style};
+    }
+
+    # Set the error bar direction.
+    if ( defined $args->{direction} ) {
+        if ( $args->{direction} eq 'minus' ) {
+            $error_bars->{_direction} = 'minus';
+        }
+        elsif ( $args->{direction} eq 'plus' ) {
+            $error_bars->{_direction} = 'plus';
+        }
+        else {
+            # Default to 'both'.
+        }
+    }
+
+    # Set the line properties for the error bars.
+    $error_bars->{_line} = $self->_get_line_properties( $args->{line} );
+
+    return $error_bars;
 }
 
 
@@ -1605,6 +1753,9 @@ sub _write_ser {
     # Write the c:trendline element.
     $self->_write_trendline( $series->{_trendline} );
 
+    # Write the c:errBars element.
+    $self->_write_error_bars( $series->{_error_bars} );
+
     # Write the c:cat element.
     $self->_write_cat( $series );
 
@@ -1840,6 +1991,7 @@ sub _write_axis_ids {
     $self->_add_axis_ids( %args );
 
     if ( $args{primary_axes} ) {
+
         # Write the axis ids for the primary axes.
         $self->_write_axis_id( $self->{_axis_ids}->[0] );
         $self->_write_axis_id( $self->{_axis_ids}->[1] );
@@ -2402,14 +2554,14 @@ sub _write_axis_pos {
 #
 sub _write_number_format {
 
-    my $self           = shift;
-    my $axis           = shift;
-    my $format_code    = $axis->{_num_format};
-    my $source_linked  = 1;
+    my $self          = shift;
+    my $axis          = shift;
+    my $format_code   = $axis->{_num_format};
+    my $source_linked = 1;
 
     # Check if a user defined number format has been set.
     if ( $format_code ne $axis->{_defaults}->{num_format} ) {
-        $source_linked  = 0;
+        $source_linked = 0;
     }
 
     # User override of sourceLinked.
@@ -3190,8 +3342,8 @@ sub _write_a_p_rich {
 #
 sub _write_a_p_formula {
 
-    my $self  = shift;
-    my $font  = shift;
+    my $self = shift;
+    my $font = shift;
 
     $self->xml_start_tag( 'a:p' );
 
@@ -3375,7 +3527,6 @@ sub _write_a_r_pr {
     else {
         $self->xml_empty_tag( 'a:rPr', @style_attributes );
     }
-
 
 
 }
@@ -3828,7 +3979,51 @@ sub _write_hi_low_lines {
 
     my $self = shift;
 
-    $self->xml_empty_tag( 'c:hiLowLines' );
+    my $hi_low_lines = $self->{_hi_low_lines};
+
+    return unless $hi_low_lines;
+
+    if ( $hi_low_lines->{_line}->{_defined} ) {
+
+        $self->xml_start_tag( 'c:hiLowLines' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $hi_low_lines );
+
+        $self->xml_end_tag( 'c:hiLowLines' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:hiLowLines' );
+    }
+}
+
+
+#############################################################################
+#
+# _write_drop_lines()
+#
+# Write the <c:dropLines> element.
+#
+sub _write_drop_lines {
+
+    my $self = shift;
+
+    my $drop_lines = $self->{_drop_lines};
+
+    return unless $drop_lines;
+
+    if ( $drop_lines->{_line}->{_defined} ) {
+
+        $self->xml_start_tag( 'c:dropLines' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $drop_lines );
+
+        $self->xml_end_tag( 'c:dropLines' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:dropLines' );
+    }
 }
 
 
@@ -4324,6 +4519,255 @@ sub _write_show_keys {
     $self->xml_empty_tag( 'c:showKeys', @attributes );
 }
 
+
+##############################################################################
+#
+# _write_error_bars()
+#
+# Write the X and Y error bars.
+#
+sub _write_error_bars {
+
+    my $self       = shift;
+    my $error_bars = shift;
+
+    return unless $error_bars;
+
+    if ( $error_bars->{_x_error_bars} ) {
+        $self->_write_err_bars( 'x', $error_bars->{_x_error_bars} );
+    }
+
+    if ( $error_bars->{_y_error_bars} ) {
+        $self->_write_err_bars( 'y', $error_bars->{_y_error_bars} );
+    }
+
+}
+
+
+##############################################################################
+#
+# _write_err_bars()
+#
+# Write the <c:errBars> element.
+#
+sub _write_err_bars {
+
+    my $self       = shift;
+    my $direction  = shift;
+    my $error_bars = shift;
+
+    return unless $error_bars;
+
+    $self->xml_start_tag( 'c:errBars' );
+
+    # Write the c:errDir element.
+    $self->_write_err_dir( $direction );
+
+    # Write the c:errBarType element.
+    $self->_write_err_bar_type( $error_bars->{_direction} );
+
+    # Write the c:errValType element.
+    $self->_write_err_val_type( $error_bars->{_type} );
+
+    if ( !$error_bars->{_endcap} ) {
+
+        # Write the c:noEndCap element.
+        $self->_write_no_end_cap();
+    }
+
+    if ( $error_bars->{_type} ne 'stdErr' ) {
+
+        # Write the c:val element.
+        $self->_write_error_val( $error_bars->{_value} );
+    }
+
+    # Write the c:spPr element.
+    $self->_write_sp_pr( $error_bars );
+
+    $self->xml_end_tag( 'c:errBars' );
+}
+
+
+##############################################################################
+#
+# _write_err_dir()
+#
+# Write the <c:errDir> element.
+#
+sub _write_err_dir {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:errDir', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_err_bar_type()
+#
+# Write the <c:errBarType> element.
+#
+sub _write_err_bar_type {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:errBarType', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_err_val_type()
+#
+# Write the <c:errValType> element.
+#
+sub _write_err_val_type {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:errValType', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_no_end_cap()
+#
+# Write the <c:noEndCap> element.
+#
+sub _write_no_end_cap {
+
+    my $self = shift;
+
+    my @attributes = ( 'val' => 1 );
+
+    $self->xml_empty_tag( 'c:noEndCap', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_error_val()
+#
+# Write the <c:val> element for error bars.
+#
+sub _write_error_val {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:val', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_up_down_bars()
+#
+# Write the <c:upDownBars> element.
+#
+sub _write_up_down_bars {
+
+    my $self         = shift;
+    my $up_down_bars = $self->{_up_down_bars};
+
+    return unless $up_down_bars;
+
+    $self->xml_start_tag( 'c:upDownBars' );
+
+    # Write the c:gapWidth element.
+    $self->_write_gap_width();
+
+    # Write the c:upBars element.
+    $self->_write_up_bars( $up_down_bars->{_up} );
+
+    # Write the c:downBars element.
+    $self->_write_down_bars( $up_down_bars->{_down} );
+
+    $self->xml_end_tag( 'c:upDownBars' );
+}
+
+
+##############################################################################
+#
+# _write_gap_width()
+#
+# Write the <c:gapWidth> element.
+#
+sub _write_gap_width {
+
+    my $self = shift;
+    my $val  = 150;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:gapWidth', @attributes );
+}
+
+##############################################################################
+#
+# _write_up_bars()
+#
+# Write the <c:upBars> element.
+#
+sub _write_up_bars {
+
+    my $self   = shift;
+    my $format = shift;
+
+    if ( $format->{_line}->{_defined} || $format->{_fill}->{_defined} ) {
+
+        $self->xml_start_tag( 'c:upBars' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $format );
+
+        $self->xml_end_tag( 'c:upBars' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:upBars' );
+    }
+}
+
+
+##############################################################################
+#
+# _write_down_bars()
+#
+# Write the <c:downBars> element.
+#
+sub _write_down_bars {
+
+    my $self   = shift;
+    my $format = shift;
+
+    if ( $format->{_line}->{_defined} || $format->{_fill}->{_defined} ) {
+
+        $self->xml_start_tag( 'c:downBars' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $format );
+
+        $self->xml_end_tag( 'c:downBars' );
+    }
+    else {
+        $self->xml_empty_tag( 'c:downBars' );
+    }
+}
+
+
 1;
 
 __END__
@@ -4490,15 +4934,23 @@ Set the fill properties of the series such as colour. See the L</CHART FORMATTIN
 
 =item * C<marker>
 
-Set the properties of the series marker such as style and colour. See the L</CHART FORMATTING> section below.
+Set the properties of the series marker such as style and colour. See the L</SERIES OPTIONS> section below.
 
 =item * C<trendline>
 
-Set the properties of the series trendline such as linear, polynomial and moving average types. See the L</CHART FORMATTING> section below.
+Set the properties of the series trendline such as linear, polynomial and moving average types. See the L</SERIES OPTIONS> section below.
+
+=item * C<y_error_bars>
+
+Set vertical error bounds for a chart series. See the L</SERIES OPTIONS> section below.
+
+=item * C<x_error_bars>
+
+Set horizontal error bounds for a chart series. See the L</SERIES OPTIONS> section below.
 
 =item * C<data_labels>
 
-Set data labels for the series. See the L</CHART FORMATTING> section below.
+Set data labels for the series. See the L</SERIES OPTIONS> section below.
 
 =item * C<invert_if_negative>
 
@@ -4873,9 +5325,51 @@ The available options, with default values are:
     vertical   => 1,    # Display vertical lines in the table.
     horizontal => 1,    # Display horizontal lines in the table.
     outline    => 1,    # Display an outline in the table.
-    show_keys  => 0     # Show the legend keys with the tabl data.
+    show_keys  => 0     # Show the legend keys with the table data.
 
 The data table can only be shown with Bar, Column, Line, Area and stock charts.
+
+
+=head2 set_up_down_bars
+
+The C<set_up_down_bars()> method adds Up-Down bars to Line charts to indicate the difference between the first and last data series.
+
+    $chart->set_up_down_bars();
+
+It is possible to format the up and down bars to add C<fill> and C<border> properties if required. See the L</CHART FORMATTING> section below.
+
+    $chart->set_up_down_bars(
+        up   => { fill => { color => 'green' } },
+        down => { fill => { color => 'red' } },
+    );
+
+Up-down bars can only be applied to Line charts and to Stock charts (by default).
+
+
+=head2 set_drop_lines
+
+The C<set_drop_lines()> method adds Drop Lines to charts to show the Category value of points in the data.
+
+    $chart->set_drop_lines();
+
+It is possible to format the Drop Line C<line> properties if required. See the L</CHART FORMATTING> section below.
+
+    $chart->set_drop_lines( line => { color => 'red', dash_type => 'square_dot' } );
+
+Drop Lines are only available in Line, Area and Stock charts.
+
+
+=head2 set_high_low_lines
+
+The C<set_high_low_lines()> method adds High-Low lines to charts to show the maximum and minimum values of points in a Category.
+
+    $chart->set_high_low_lines();
+
+It is possible to format the High-Low Line C<line> properties if required. See the L</CHART FORMATTING> section below.
+
+    $chart->set_high_low_lines( line => { color => 'red' } );
+
+High-Low Lines are only available in Line and Stock charts.
 
 
 =head2 show_blanks_as()
@@ -4898,6 +5392,298 @@ Display data in hidden rows or columns on the chart.
     $chart->show_hidden_data();
 
 
+=head1 SERIES OPTIONS
+
+This section details the following properties of C<add_series()> in more detail:
+
+    marker
+    trendline
+    y_error_bars
+    x_error_bars
+    data_labels
+
+=head2 Marker
+
+The marker format specifies the properties of the markers used to distinguish series on a chart. In general only Line and Scatter chart types and trendlines use markers.
+
+The following properties can be set for C<marker> formats in a chart.
+
+    type
+    size
+    border
+    fill
+
+The C<type> property sets the type of marker that is used with a series.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'diamond' },
+    );
+
+The following C<type> properties can be set for C<marker> formats in a chart. These are shown in the same order as in the Excel format dialog.
+
+    automatic
+    none
+    square
+    diamond
+    triangle
+    x
+    star
+    short_dash
+    long_dash
+    circle
+    plus
+
+The C<automatic> type is a special case which turns on a marker using the default marker style for the particular series number.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'automatic' },
+    );
+
+If C<automatic> is on then other marker properties such as size, border or fill cannot be set.
+
+The C<size> property sets the size of the marker and is generally used in conjunction with C<type>.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => { type => 'diamond', size => 7 },
+    );
+
+Nested C<border> and C<fill> properties can also be set for a marker. See the L</CHART FORMATTING> section below.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        marker     => {
+            type    => 'square',
+            size    => 5,
+            border  => { color => 'red' },
+            fill    => { color => 'yellow' },
+        },
+    );
+
+
+=head2 Trendline
+
+A trendline can be added to a chart series to indicate trends in the data such as a moving average or a polynomial fit.
+
+The following properties can be set for trendlines in a chart series.
+
+    type
+    order       (for polynomial trends)
+    period      (for moving average)
+    forward     (for all except moving average)
+    backward    (for all except moving average)
+    name
+    line
+
+The C<type> property sets the type of trendline in the series.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => { type => 'linear' },
+    );
+
+The available C<trendline> types are:
+
+    exponential
+    linear
+    log
+    moving_average
+    polynomial
+    power
+
+A C<polynomial> trendline can also specify the C<order> of the polynomial. The default value is 2.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type  => 'polynomial',
+            order => 3,
+        },
+    );
+
+A C<moving_average> trendline can also specify the C<period> of the moving average. The default value is 2.
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => {
+            type   => 'moving_average',
+            period => 3,
+        },
+    );
+
+The C<forward> and C<backward> properties set the forecast period of the trendline.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type     => 'linear',
+            forward  => 0.5,
+            backward => 0.5,
+        },
+    );
+
+The C<name> property sets an optional name for the trendline that will appear in the chart legend. If it isn't specified the Excel default name will be displayed. This is usually a combination of the trendline type and the series name.
+
+    $chart->add_series(
+        values    => '=Sheet1!$B$1:$B$5',
+        trendline => {
+            type => 'linear',
+            name => 'Interpolated trend',
+        },
+    );
+
+Several of these properties can be set in one go:
+
+    $chart->add_series(
+        values     => '=Sheet1!$B$1:$B$5',
+        trendline  => {
+            type     => 'linear',
+            name     => 'My trend name',
+            forward  => 0.5,
+            backward => 0.5,
+            line     => {
+                color     => 'red',
+                width     => 1,
+                dash_type => 'long_dash',
+            },
+        },
+    );
+
+Trendlines cannot be added to series in a stacked chart or pie chart, radar chart or (when implemented) to 3D, surface, or doughnut charts.
+
+=head2 Error Bars
+
+Error bars can be added to a chart series to indicate error bounds in the data. The error bars can be vertical C<y_error_bars> (the most common type) or horizontal C<x_error_bars> (for Bar and Scatter charts only).
+
+The following properties can be set for error bars in a chart series.
+
+    type
+    value       (for all types except standard error)
+    direction
+    end_style
+    line
+
+The C<type> property sets the type of error bars in the series.
+
+    $chart->add_series(
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => { type => 'standard_error' },
+    );
+
+The available error bars types are available:
+
+    fixed
+    percentage
+    standard_deviation
+    standard_error
+
+Note, the "custom" error bars type is not supported.
+
+All error bar types, except for C<standard_error> must also have a value associated with it for the error bounds:
+
+    $chart->add_series(
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type  => 'percentage',
+            value => 5,
+        },
+    );
+
+The C<direction> property sets the direction of the error bars. It should be one of the following:
+
+    plus    # Positive direction only.
+    minus   # Negative direction only.
+    both    # Plus and minus directions, The default.
+
+The C<end_style> property sets the style of the error bar end cap. The options are 1 (the default) or 0 (for no end cap):
+
+    $chart->add_series(
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type      => 'fixed',
+            value     => 2,
+            end_style => 0,
+            direction => 'minus'
+        },
+    );
+
+
+
+=head2 Data Labels
+
+Data labels can be added to a chart series to indicate the values of the plotted data points.
+
+The following properties can be set for C<data_labels> formats in a chart.
+
+    value
+    category
+    series_name
+    position
+    leader_lines
+    percentage
+
+
+The C<value> property turns on the I<Value> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1 },
+    );
+
+The C<category> property turns on the I<Category Name> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { category => 1 },
+    );
+
+
+The C<series_name> property turns on the I<Series Name> data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { series_name => 1 },
+    );
+
+The C<position> property is used to position the data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1, position => 'center' },
+    );
+
+Valid positions are:
+
+    center
+    right
+    left
+    top
+    bottom
+    above           # Same as top
+    below           # Same as bottom
+    inside_end      # Pie chart mainly.
+    outside_end     # Pie chart mainly.
+    best_fit        # Pie chart mainly.
+
+The C<percentage> property is used to turn on the display of data labels as a I<Percentage> for a series. It is mainly used for pie charts.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { percentage => 1 },
+    );
+
+The C<leader_lines> property is used to turn on  I<Leader Lines> for the data label for a series. It is mainly used for pie charts.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1, leader_lines => 1 },
+    );
+
+Note: Even when leader lines are turned on they aren't automatically visible in Excel or Excel::Writer::XLSX. Due to an Excel limitation (or design) leader lines only appear if the data label is moved manually or if the data labels are very close and need to be adjusted automatically.
+
+
 =head1 CHART FORMATTING
 
 The following chart formatting properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart lines, column fill areas, plot area borders, markers, gridlines and other chart elements documented above.
@@ -4905,9 +5691,6 @@ The following chart formatting properties can be set for any chart object that t
     line
     border
     fill
-    marker
-    trendline
-    data_labels
 
 Chart formatting properties are generally set using hash refs.
 
@@ -5045,233 +5828,6 @@ The C<fill> format is generally used in conjunction with a C<border> format whic
         border     => { color => 'red' },
         fill       => { color => 'yellow' },
     );
-
-=head2 Marker
-
-The marker format specifies the properties of the markers used to distinguish series on a chart. In general only Line and Scatter chart types and trendlines use markers.
-
-The following properties can be set for C<marker> formats in a chart.
-
-    type
-    size
-    border
-    fill
-
-The C<type> property sets the type of marker that is used with a series.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        marker     => { type => 'diamond' },
-    );
-
-The following C<type> properties can be set for C<marker> formats in a chart. These are shown in the same order as in the Excel format dialog.
-
-    automatic
-    none
-    square
-    diamond
-    triangle
-    x
-    star
-    short_dash
-    long_dash
-    circle
-    plus
-
-The C<automatic> type is a special case which turns on a marker using the default marker style for the particular series number.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        marker     => { type => 'automatic' },
-    );
-
-If C<automatic> is on then other marker properties such as size, border or fill cannot be set.
-
-The C<size> property sets the size of the marker and is generally used in conjunction with C<type>.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        marker     => { type => 'diamond', size => 7 },
-    );
-
-Nested C<border> and C<fill> properties can also be set for a marker. These have the same sub-properties as shown above.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        marker     => {
-            type    => 'square',
-            size    => 5,
-            border  => { color => 'red' },
-            fill    => { color => 'yellow' },
-        },
-    );
-
-=head2 Trendline
-
-A trendline can be added to a chart series to indicate trends in the data such as a moving average or a polynomial fit.
-
-The following properties can be set for C<trendline> formats in a chart.
-
-    type
-    order       (for polynomial trends)
-    period      (for moving average)
-    forward     (for all except moving average)
-    backward    (for all except moving average)
-    name
-    line
-
-The C<type> property sets the type of trendline in the series.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        trendline  => { type => 'linear' },
-    );
-
-The available C<trendline> types are:
-
-    exponential
-    linear
-    log
-    moving_average
-    polynomial
-    power
-
-A C<polynomial> trendline can also specify the C<order> of the polynomial. The default value is 2.
-
-    $chart->add_series(
-        values    => '=Sheet1!$B$1:$B$5',
-        trendline => {
-            type  => 'polynomial',
-            order => 3,
-        },
-    );
-
-A C<moving_average> trendline can also specify the C<period> of the moving average. The default value is 2.
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        trendline  => {
-            type   => 'moving_average',
-            period => 3,
-        },
-    );
-
-The C<forward> and C<backward> properties set the forecast period of the trendline.
-
-    $chart->add_series(
-        values    => '=Sheet1!$B$1:$B$5',
-        trendline => {
-            type     => 'linear',
-            forward  => 0.5,
-            backward => 0.5,
-        },
-    );
-
-The C<name> property sets an optional name for the trendline that will appear in the chart legend. If it isn't specified the Excel default name will be displayed. This is usually a combination of the trendline type and the series name.
-
-    $chart->add_series(
-        values    => '=Sheet1!$B$1:$B$5',
-        trendline => {
-            type => 'linear',
-            name => 'Interpolated trend',
-        },
-    );
-
-Several of these properties can be set in one go:
-
-    $chart->add_series(
-        values     => '=Sheet1!$B$1:$B$5',
-        trendline  => {
-            type     => 'linear',
-            name     => 'My trend name',
-            forward  => 0.5,
-            backward => 0.5,
-            line     => {
-                color     => 'red',
-                width     => 1,
-                dash_type => 'long_dash',
-            },
-        },
-    );
-
-Trendlines cannot be added to series in a stacked chart or pie chart, radar chart or (when implemented) to 3D, surface, or doughnut charts.
-
-=head2 Data Labels
-
-Data labels can be added to a chart series to indicate the values of the plotted data points.
-
-The following properties can be set for C<data_labels> formats in a chart.
-
-    value
-    category
-    series_name
-    position
-    leader_lines
-    percentage
-
-
-The C<value> property turns on the I<Value> data label for a series.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { value => 1 },
-    );
-
-The C<category> property turns on the I<Category Name> data label for a series.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { category => 1 },
-    );
-
-
-The C<series_name> property turns on the I<Series Name> data label for a series.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { series_name => 1 },
-    );
-
-The C<position> property is used to position the data label for a series.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { value => 1, position => 'center' },
-    );
-
-Valid positions are:
-
-    center
-    right
-    left
-    top
-    bottom
-    above           # Same as top
-    below           # Same as bottom
-    inside_end      # Pie chart mainly.
-    outside_end     # Pie chart mainly.
-    best_fit        # Pie chart mainly.
-
-The C<percentage> property is used to turn on the display of data labels as a I<Percentage> for a series. It is mainly used for pie charts.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { percentage => 1 },
-    );
-
-The C<leader_lines> property is used to turn on  I<Leader Lines> for the data label for a series. It is mainly used for pie charts.
-
-    $chart->add_series(
-        values      => '=Sheet1!$B$1:$B$5',
-        data_labels => { value => 1, leader_lines => 1 },
-    );
-
-Note: Even when leader lines are turned on they aren't automatically visible in Excel or Excel::Writer::XLSX. Due to an Excel limitation (or design) leader lines only appear if the data label is moved manually or if the data labels are very close and need to be adjusted automatically.
-
-
-=head2 Other formatting options
-
-Other formatting options will be added in time. If there is a feature that you would like to see included drop me a line.
 
 
 =head1 CHART FONTS
