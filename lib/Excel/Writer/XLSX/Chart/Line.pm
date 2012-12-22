@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.63';
+our $VERSION = '0.64';
 
 
 ###############################################################################
@@ -102,6 +102,35 @@ sub _write_line_chart {
     $self->_write_axis_ids( %args );
 
     $self->xml_end_tag( 'c:lineChart' );
+}
+
+
+##############################################################################
+#
+# _write_d_pt_point()
+#
+# Write an individual <c:dPt> element. Override the parent method to add
+# markers.
+#
+sub _write_d_pt_point {
+
+    my $self   = shift;
+    my $index = shift;
+    my $point = shift;
+
+        $self->xml_start_tag( 'c:dPt' );
+
+        # Write the c:idx element.
+        $self->_write_idx( $index );
+
+        $self->xml_start_tag( 'c:marker' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $point );
+
+        $self->xml_end_tag( 'c:marker' );
+
+        $self->xml_end_tag( 'c:dPt' );
 }
 
 
