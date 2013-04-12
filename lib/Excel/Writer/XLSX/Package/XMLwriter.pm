@@ -6,7 +6,7 @@ package Excel::Writer::XLSX::Package::XMLwriter;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -21,7 +21,7 @@ use Carp;
 use IO::File;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.65';
+our $VERSION = '0.66';
 
 #
 # NOTE: this module is a light weight re-implementation of XML::Writer. See
@@ -336,9 +336,9 @@ sub xml_rich_si_element {
 #
 sub xml_number_element {
 
-    my $self  = shift;
-    my $index = shift;
-    my $attr  = '';
+    my $self   = shift;
+    my $number = shift;
+    my $attr   = '';
 
     while ( @_ ) {
         my $key   = shift;
@@ -347,7 +347,7 @@ sub xml_number_element {
     }
 
     local $\ = undef;
-    print { $self->{_fh} } "<c$attr><v>$index</v></c>";
+    print { $self->{_fh} } "<c$attr><v>$number</v></c>";
 }
 
 
@@ -361,7 +361,7 @@ sub xml_formula_element {
 
     my $self    = shift;
     my $formula = shift;
-    my $value   = shift;
+    my $result  = shift;
     my $attr    = '';
 
     while ( @_ ) {
@@ -373,7 +373,7 @@ sub xml_formula_element {
     $formula = _escape_data( $formula );
 
     local $\ = undef;
-    print { $self->{_fh} } "<c$attr><f>$formula</f><v>$value</v></c>";
+    print { $self->{_fh} } "<c$attr><f>$formula</f><v>$result</v></c>";
 }
 
 
@@ -518,7 +518,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

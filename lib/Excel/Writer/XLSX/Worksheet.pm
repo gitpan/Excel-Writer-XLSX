@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Worksheet;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.65';
+our $VERSION = '0.66';
 
 
 ###############################################################################
@@ -154,7 +154,6 @@ sub new {
 
     $self->{_write_match} = [];
 
-    $self->{prev_col} = -1;
 
     $self->{_table} = {};
     $self->{_merge} = [];
@@ -203,8 +202,6 @@ sub new {
     if ( $self->{_optimization} == 1 ) {
         my $fh = tempfile( DIR => $self->{_tempdir} );
         binmode $fh, ':utf8';
-
-        my $writer = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
         $self->{_cell_data_fh} = $fh;
         $self->{_fh}           = $fh;
@@ -4731,12 +4728,12 @@ sub _position_object_emus {
     ) = $self->_position_object_pixels( @_, $is_drawing );
 
     # Convert the pixel values to EMUs. See above.
-    $x1    *= 9_525;
-    $y1    *= 9_525;
-    $x2    *= 9_525;
-    $y2    *= 9_525;
-    $x_abs *= 9_525;
-    $y_abs *= 9_525;
+    $x1    = int( 0.5 + 9_525 * $x1 );
+    $y1    = int( 0.5 + 9_525 * $y1 );
+    $x2    = int( 0.5 + 9_525 * $x2 );
+    $y2    = int( 0.5 + 9_525 * $y2 );
+    $x_abs = int( 0.5 + 9_525 * $x_abs );
+    $y_abs = int( 0.5 + 9_525 * $y_abs );
 
     return (
         $col_start, $row_start, $x1, $y1,
@@ -5953,9 +5950,6 @@ sub _write_worksheet {
     my $xmlns                  = $schema . 'spreadsheetml/2006/main';
     my $xmlns_r                = $schema . 'officeDocument/2006/relationships';
     my $xmlns_mc               = $schema . 'markup-compatibility/2006';
-    my $xmlns_mv               = 'urn:schemas-microsoft-com:mac:vml';
-    my $mc_ignorable           = 'mv';
-    my $mc_preserve_attributes = 'mv:*';
 
     my @attributes = (
         'xmlns'   => $xmlns,
@@ -5963,8 +5957,7 @@ sub _write_worksheet {
     );
 
     if ( $self->{_excel_version} == 2010 ) {
-        push @attributes,
-          ( 'xmlns:mc' => $schema . 'markup-compatibility/2006' );
+        push @attributes, ( 'xmlns:mc' => $xmlns_mc );
 
         push @attributes,
           (     'xmlns:x14ac' => 'http://schemas.microsoft.com/'
@@ -6986,6 +6979,10 @@ sub _write_page_setup {
         push @attributes, ( 'orientation' => 'portrait' );
     }
 
+    # Set start page.
+    if ( $self->{_page_start} != 0 ) {
+        push @attributes, ( 'useFirstPageNumber' => $self->{_page_start} );
+    }
 
     $self->xml_empty_tag( 'pageSetup', @attributes );
 }
@@ -8929,6 +8926,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
