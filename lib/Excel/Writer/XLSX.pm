@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.67';
+our $VERSION = '0.68';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.67 of Excel::Writer::XLSX, released May 6, 2013.
+This document refers to version 0.68 of Excel::Writer::XLSX, released June 6, 2013.
 
 
 
@@ -4856,7 +4856,7 @@ The C<2_color_scale> type is used to specify Excel's "2 Color Scale" style condi
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<max_type>, C<min_value>, C<max_value>, C<min_color> and C<max_color>, see below.
 
 
 =head2 type => '3_color_scale'
@@ -4869,7 +4869,8 @@ The C<3_color_scale> type is used to specify Excel's "3 Color Scale" style condi
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<mid_type>, C<max_type>, C<min_value>, C<mid_value>, C<max_value>, C<min_color>, C<mid_color> and C<max_color>, see below.
+
 
 =head2 type => 'data_bar'
 
@@ -4881,7 +4882,8 @@ The C<data_bar> type is used to specify Excel's "Data Bar" style conditional for
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<max_type>, C<min_value>, C<max_value> and C<bar_color>, see below.
+
 
 
 =head2 type => 'formula'

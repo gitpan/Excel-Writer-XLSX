@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse ('(c)'), March 2013, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), November 2012, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -16,7 +16,7 @@ use Test::More tests => 1;
 #
 # Tests setup.
 #
-my $filename     = 'firstsheet01.xlsx';
+my $filename     = 'button08.xlsx';
 my $dir          = 't/regression/';
 my $got_filename = $dir . $filename;
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
@@ -32,31 +32,15 @@ my $ignore_elements = {};
 use Excel::Writer::XLSX;
 
 my $workbook  = Excel::Writer::XLSX->new( $got_filename );
-
 my $worksheet1 = $workbook->add_worksheet();
 my $worksheet2 = $workbook->add_worksheet();
-my $worksheet3 = $workbook->add_worksheet();
-my $worksheet4 = $workbook->add_worksheet();
-my $worksheet5 = $workbook->add_worksheet();
-my $worksheet6 = $workbook->add_worksheet();
-my $worksheet7 = $workbook->add_worksheet();
-my $worksheet8 = $workbook->add_worksheet();
-my $worksheet9 = $workbook->add_worksheet();
-my $worksheet10 = $workbook->add_worksheet();
-my $worksheet11 = $workbook->add_worksheet();
-my $worksheet12 = $workbook->add_worksheet();
-my $worksheet13 = $workbook->add_worksheet();
-my $worksheet14 = $workbook->add_worksheet();
-my $worksheet15 = $workbook->add_worksheet();
-my $worksheet16 = $workbook->add_worksheet();
-my $worksheet17 = $workbook->add_worksheet();
-my $worksheet18 = $workbook->add_worksheet();
-my $worksheet19 = $workbook->add_worksheet();
-my $worksheet20 = $workbook->add_worksheet();
 
+$worksheet1->insert_button( 'C2', {} );
 
-$worksheet8->set_first_sheet();
-$worksheet20->activate();
+$worksheet2->write_comment( 'A1', 'Foo' );
+
+# Set the author to match the target XLSX file.
+$worksheet2->set_comments_author( 'John' );
 
 $workbook->close();
 

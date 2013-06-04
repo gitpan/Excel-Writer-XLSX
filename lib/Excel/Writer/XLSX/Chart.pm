@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.67';
+our $VERSION = '0.68';
 
 
 ###############################################################################
@@ -6198,6 +6198,51 @@ As such some of C<Excel::Writer::XLSX> axis properties can be set for a value ax
 For example the C<min> and C<max> properties can only be set for value axes and C<reverse> can be set for both. The type of axis that a property applies to is shown in the C<set_x_axis()> section of the documentation above.
 
 Some charts such as C<Scatter> and C<Stock> have two value axes.
+
+
+=head1 Secondary Axes
+
+It is possible to add a secondary axis of the same type to a chart by setting the C<y2_axis> or C<x2_axis> property of the series:
+
+    #!/usr/bin/perl
+
+    use strict;
+    use warnings;
+    use Excel::Writer::XLSX;
+
+    my $workbook  = Excel::Writer::XLSX->new( 'chart_secondary_axis.xlsx' );
+    my $worksheet = $workbook->add_worksheet();
+
+    # Add the worksheet data that the charts will refer to.
+    my $data = [
+        [ 2,  3,  4,  5,  6,  7 ],
+        [ 10, 40, 50, 20, 10, 50 ],
+
+    ];
+
+    $worksheet->write( 'A1', $data );
+
+    # Create a new chart object. In this case an embedded chart.
+    my $chart = $workbook->add_chart( type => 'line', embedded => 1 );
+
+    # Configure a series with a secondary axis
+    $chart->add_series(
+        values  => '=Sheet1!$A$1:$A$6',
+        y2_axis => 1,
+    );
+
+    $chart->add_series(
+        values => '=Sheet1!$B$1:$B$6',
+    );
+
+
+    # Insert the chart into the worksheet.
+    $worksheet->insert_chart( 'D2', $chart );
+
+    __END__
+
+
+Note, it isn’t currently possible to add a secondary axis of a different chart type (for example line and column).
 
 
 =head1 TODO
