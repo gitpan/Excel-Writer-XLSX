@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.68';
+our $VERSION = '0.69';
 
 
 ###############################################################################
@@ -3360,6 +3360,7 @@ sub conditional_formatting {
         # Check for a user defined multiple range like B3:K6,B8:K11.
         if ( $_[0] =~ /,/ ) {
             $user_range = $_[0];
+            $user_range =~ s/^=//;
             $user_range =~ s/\s*,\s*/ /g;
             $user_range =~ s/\$//g;
         }
@@ -4014,7 +4015,7 @@ sub add_table {
 
                 my $token = $data->[$i]->[$j];
 
-                if ( $token ) {
+                if ( defined $token ) {
                     $self->write( $row, $col, $token, $col_formats[$j] );
                 }
 
