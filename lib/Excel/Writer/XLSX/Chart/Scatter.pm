@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.69';
+our $VERSION = '0.70';
 
 
 ###############################################################################
@@ -39,6 +39,7 @@ sub new {
     $self->{_cross_between}    = 'midCat';
     $self->{_horiz_val_axis}   = 0;
     $self->{_val_axis_postion} = 'b';
+    $self->{_smooth_allowed}   = 1;
 
     bless $self, $class;
     return $self;
@@ -162,7 +163,13 @@ sub _write_ser {
     $self->_write_y_val( $series );
 
     # Write the c:smooth element.
-    $self->_write_c_smooth();
+    if ( $self->{_subtype} =~ /smooth/ && !defined $series->{_smooth} ) {
+        # Default is on for smooth scatter charts.
+        $self->_write_c_smooth( 1 );
+    }
+    else {
+        $self->_write_c_smooth( $series->{_smooth} );
+    }
 
     $self->xml_end_tag( 'c:ser' );
 }
@@ -304,26 +311,6 @@ sub _write_scatter_style {
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:scatterStyle', @attributes );
-}
-
-
-##############################################################################
-#
-# _write_c_smooth()
-#
-# Write the <c:smooth> element.
-#
-sub _write_c_smooth {
-
-    my $self    = shift;
-    my $subtype = $self->{_subtype};
-    my $val     = 1;
-
-    return unless $subtype =~ /smooth/;
-
-    my @attributes = ( 'val' => $val );
-
-    $self->xml_empty_tag( 'c:smooth', @attributes );
 }
 
 

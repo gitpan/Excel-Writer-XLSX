@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.69';
+our $VERSION = '0.70';
 
 
 ###############################################################################
@@ -103,6 +103,7 @@ sub new {
     $self->{_x_offset}          = 0;
     $self->{_y_offset}          = 0;
     $self->{_table}             = undef;
+    $self->{_smooth_allowed}    = 0;
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -208,6 +209,9 @@ sub add_series {
     # Set the trendline properties for the series.
     my $trendline = $self->_get_trendline_properties( $arg{trendline} );
 
+    # Set the line smooth property for the series.
+    my $smooth = $arg{smooth};
+
     # Set the error bars properties for the series.
     my $y_error_bars = $self->_get_error_bars_properties( $arg{y_error_bars} );
     my $x_error_bars = $self->_get_error_bars_properties( $arg{x_error_bars} );
@@ -249,6 +253,7 @@ sub add_series {
         _fill          => $fill,
         _marker        => $marker,
         _trendline     => $trendline,
+        _smooth        => $smooth,
         _labels        => $labels,
         _invert_if_neg => $invert_if_neg,
         _x2_axis       => $x2_axis,
@@ -1829,6 +1834,11 @@ sub _write_ser {
 
     # Write the c:val element.
     $self->_write_val( $series );
+
+    # Write the c:smooth element.
+    if ( $self->{_smooth_allowed} ) {
+        $self->_write_c_smooth( $series->{_smooth} );
+    }
 
     $self->xml_end_tag( 'c:ser' );
 }
@@ -4910,6 +4920,25 @@ sub _write_down_bars {
 }
 
 
+##############################################################################
+#
+# _write_c_smooth()
+#
+# Write the <c:smooth> element.
+#
+sub _write_c_smooth {
+
+    my $self    = shift;
+    my $smooth  = shift;
+
+    return unless $smooth;
+
+    my @attributes = ( 'val' => 1 );
+
+    $self->xml_empty_tag( 'c:smooth', @attributes );
+}
+
+
 1;
 
 __END__
@@ -5081,6 +5110,10 @@ Set the properties of the series marker such as style and colour. See the L</SER
 =item * C<trendline>
 
 Set the properties of the series trendline such as linear, polynomial and moving average types. See the L</SERIES OPTIONS> section below.
+
+=item * C<smooth>
+
+The C<smooth> option is used to set the smooth property of a line series. See the L</SERIES OPTIONS> section below.
 
 =item * C<y_error_bars>
 
@@ -5564,6 +5597,7 @@ This section details the following properties of C<add_series()> in more detail:
     x_error_bars
     data_labels
     points
+    smooth
 
 =head2 Marker
 
@@ -5879,6 +5913,13 @@ The C<points> property takes an array ref of format options (see the L</CHART FO
         points => [ { fill => { color => '#FF0000' } } ],
     );
 
+=head2 Smooth
+
+The C<smooth> option is used to set the smooth property of a line series. It is only applicable to the C<Line> and C<Scatter> chart types.
+
+    $chart->add_series( values => '=Sheet1!$C$1:$C$5',
+                        smooth => 1 );
+
 
 =head1 CHART FORMATTING
 
@@ -6035,8 +6076,8 @@ The following font properties can be set for any chart object that they apply to
     bold
     italic
     underline
-    color
     rotation
+    color
 
 The following explains the available font properties:
 

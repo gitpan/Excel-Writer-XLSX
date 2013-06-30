@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.69';
+our $VERSION = '0.70';
 
 
 ###############################################################################
@@ -4621,9 +4621,7 @@ sub _position_object_pixels {
     my $x_abs = 0;    # Absolute distance to left side of object.
     my $y_abs = 0;    # Absolute distance to top  side of object.
 
-    my $is_drawing = 0;
-
-    ( $col_start, $row_start, $x1, $y1, $width, $height, $is_drawing ) = @_;
+    ( $col_start, $row_start, $x1, $y1, $width, $height ) = @_;
 
     # Calculate the absolute x offset of the top-left vertex.
     if ( $self->{_col_size_changed} ) {
@@ -4687,13 +4685,6 @@ sub _position_object_pixels {
         $row_end++;
     }
 
-    # The following is only required for positioning drawing/chart objects
-    # and not comments. It is probably the result of a bug.
-    if ( $is_drawing ) {
-        $col_end-- if $width == 0;
-        $row_end-- if $height == 0;
-    }
-
     # The end vertices are whatever is left from the width and height.
     $x2 = $width;
     $y2 = $height;
@@ -4720,14 +4711,13 @@ sub _position_object_pixels {
 sub _position_object_emus {
 
     my $self       = shift;
-    my $is_drawing = 1;
 
     my (
         $col_start, $row_start, $x1, $y1,
         $col_end,   $row_end,   $x2, $y2,
         $x_abs,     $y_abs
 
-    ) = $self->_position_object_pixels( @_, $is_drawing );
+    ) = $self->_position_object_pixels( @_ );
 
     # Convert the pixel values to EMUs. See above.
     $x1    = int( 0.5 + 9_525 * $x1 );
@@ -4820,7 +4810,7 @@ sub _size_col {
             $pixels = 0;
         }
         elsif ( $width < 1 ) {
-            $pixels = int( $width * 12 + 0.5 );
+            $pixels = int( $width * ($max_digit_width + $padding) + 0.5 );
         }
         else {
             $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
@@ -5039,7 +5029,7 @@ sub _prepare_chart {
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height, 0 );
+        $height );
 
     # Set the chart name for the embedded object if it has been specified.
     my $name = $chart->{_chart_name};
@@ -6345,10 +6335,20 @@ sub _write_col_info {
     # Convert column width from user units to character width.
     my $max_digit_width = 7;    # For Calabri 11.
     my $padding         = 5;
+
     if ( $width > 0 ) {
-        $width = int(
-            ( $width * $max_digit_width + $padding ) / $max_digit_width * 256 )
-          / 256;
+        if ( $width < 1 ) {
+            $width =
+              int( ( int( $width * ($max_digit_width + $padding) + 0.5 ) ) /
+                  $max_digit_width *
+                  256 ) / 256;
+        }
+        else {
+            $width =
+              int( ( int( $width * $max_digit_width + 0.5 ) + $padding ) /
+                  $max_digit_width *
+                  256 ) / 256;
+        }
     }
 
     my @attributes = (
@@ -7783,10 +7783,10 @@ sub _calculate_x_split_width {
 
     # Convert to pixels.
     if ( $width < 1 ) {
-        $pixels = int( $width * 12 + 0.5 );
+        $pixels = int( $width * ( $max_digit_width + $padding ) + 0.5 );
     }
     else {
-        $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
+          $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
     }
 
     # Convert to points.
