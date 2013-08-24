@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.70';
+our $VERSION = '0.71';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.70 of Excel::Writer::XLSX, released June 30, 2013.
+This document refers to version 0.71 of Excel::Writer::XLSX, released August 24, 2013.
 
 
 
@@ -1562,8 +1562,6 @@ See the C<write_handler 1-4> programs in the C<examples> directory for further e
 
 
 =head2 insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
-
-Partially supported. Currently only works for 96 dpi images.
 
 This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
@@ -6197,7 +6195,7 @@ It supports all of the features of Spreadsheet::WriteExcel with some minor diffe
     show_comments()             Yes
     set_comments_author()       Yes
     add_write_handler()         Yes
-    insert_image()              Yes/Partial, see docs.
+    insert_image()              Yes.
     insert_chart()              Yes
     insert_shape()              Yes. Not in Spreadsheet::WriteExcel.
     insert_button()             Yes. Not in Spreadsheet::WriteExcel.
@@ -6485,12 +6483,6 @@ For other Perl-Excel modules try the following search: L<http://search.cpan.org/
 =head1 BUGS
 
 =over
-
-=item * Zero values for formulas results.
-
-Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. This is a bug in Excel since Excel::Writer::XLSX sets the required flag for recalculating formulas on opening.
-
-Applying all available Service Packs to Excel should fix this. Alternatively you can supply calculated values for all formulas that you write.
 
 =item * Memory usage is very high for large worksheets.
 
