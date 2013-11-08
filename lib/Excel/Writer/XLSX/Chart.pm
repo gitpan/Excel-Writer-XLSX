@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.72';
+our $VERSION = '0.73';
 
 
 ###############################################################################
@@ -104,6 +104,7 @@ sub new {
     $self->{_y_offset}          = 0;
     $self->{_table}             = undef;
     $self->{_smooth_allowed}    = 0;
+    $self->{_cross_between}     = 'between';
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -367,8 +368,9 @@ sub set_legend {
     my $self = shift;
     my %arg  = @_;
 
-    $self->{_legend_position} = $arg{position} || 'right';
+    $self->{_legend_position}      = $arg{position} || 'right';
     $self->{_legend_delete_series} = $arg{delete_series};
+    $self->{_legend_font}          = $self->_convert_font_args( $arg{font} );
 }
 
 
@@ -628,6 +630,7 @@ sub _convert_axis_args {
         _major_unit_type   => $arg{major_unit_type},
         _log_base          => $arg{log_base},
         _crossing          => $arg{crossing},
+        _position_axis     => $arg{position_axis},
         _position          => $arg{position},
         _label_position    => $arg{label_position},
         _num_format        => $arg{num_format},
@@ -651,6 +654,21 @@ sub _convert_axis_args {
     # Only use the first letter of bottom, top, left or right.
     if ( defined $axis->{_position} ) {
         $axis->{_position} = substr lc $axis->{_position}, 0, 1;
+    }
+
+    # Set the position for a category axis on or between the tick marks.
+    if ( defined $axis->{_position_axis} ) {
+        if ( $axis->{_position_axis} eq 'on_tick' ) {
+            $axis->{_position_axis} = 'midCat';
+        }
+        elsif ( $axis->{_position_axis} eq 'between' ) {
+
+            # Doesn't need to be modified.
+        }
+        else {
+            # Otherwise use the default value.
+            $axis->{_position_axis} = undef;
+        }
     }
 
     # Set the font properties if present.
@@ -1149,10 +1167,14 @@ sub _get_error_bars_properties {
 
     # Default values.
     my $error_bars = {
-        _type      => 'fixedVal',
-        _value     => 1,
-        _endcap    => 1,
-        _direction => 'both'
+        _type         => 'fixedVal',
+        _value        => 1,
+        _endcap       => 1,
+        _direction    => 'both',
+        _plus_values  => [1],
+        _minus_values => [1],
+        _plus_data    => [],
+        _minus_data   => [],
     };
 
     my %types = (
@@ -1160,6 +1182,7 @@ sub _get_error_bars_properties {
         percentage         => 'percentage',
         standard_deviation => 'stdDev',
         standard_error     => 'stdErr',
+        custom             => 'cust',
     );
 
     # Check the error bars type.
@@ -1194,6 +1217,20 @@ sub _get_error_bars_properties {
         else {
             # Default to 'both'.
         }
+    }
+
+    # Set any custom values.
+    if ( defined $args->{plus_values} ) {
+        $error_bars->{_plus_values} = $args->{plus_values};
+    }
+    if ( defined $args->{minus_values} ) {
+        $error_bars->{_minus_values} = $args->{minus_values};
+    }
+    if ( defined $args->{plus_data} ) {
+        $error_bars->{_plus_data} = $args->{plus_data};
+    }
+    if ( defined $args->{minus_data} ) {
+        $error_bars->{_minus_data} = $args->{minus_data};
     }
 
     # Set the line properties for the error bars.
@@ -1452,7 +1489,10 @@ sub _get_font_style_attributes {
     push @attributes, ( 'i'  => $font->{_italic} ) if defined $font->{_italic};
     push @attributes, ( 'u' => 'sng' ) if defined $font->{_underline};
 
-    push @attributes, ( 'baseline' => $font->{_baseline} );
+    # Turn off baseline when testing fonts that don't have it.
+    if ($font->{_baseline} != -1) {
+        push @attributes, ( 'baseline' => $font->{_baseline} );
+    }
 
     return @attributes;
 }
@@ -2277,7 +2317,7 @@ sub _write_val_axis {
     }
 
     # Write the c:crossBetween element.
-    $self->_write_cross_between();
+    $self->_write_cross_between( $x_axis->{_position_axis} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $y_axis->{_major_unit} );
@@ -2370,7 +2410,7 @@ sub _write_cat_val_axis {
     }
 
     # Write the c:crossBetween element.
-    $self->_write_cross_between();
+    $self->_write_cross_between( $y_axis->{_position_axis} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $x_axis->{_major_unit} );
@@ -2904,7 +2944,7 @@ sub _write_cross_between {
 
     my $self = shift;
 
-    my $val = $self->{_cross_between} || 'between';
+    my $val = shift || $self->{_cross_between};
 
     my @attributes = ( 'val' => $val );
 
@@ -2994,6 +3034,7 @@ sub _write_legend {
 
     my $self          = shift;
     my $position      = $self->{_legend_position};
+    my $font          = $self->{_legend_font};
     my @delete_series = ();
     my $overlay       = 0;
 
@@ -3033,6 +3074,11 @@ sub _write_legend {
 
     # Write the c:layout element.
     $self->_write_layout();
+
+    # Write the c:txPr element.
+    if ($font) {
+        $self->_write_tx_pr( undef, $font );
+    }
 
     # Write the c:overlay element.
     $self->_write_overlay() if $overlay;
@@ -4725,8 +4771,16 @@ sub _write_err_bars {
         $self->_write_no_end_cap();
     }
 
-    if ( $error_bars->{_type} ne 'stdErr' ) {
+    if ( $error_bars->{_type} eq 'stdErr' ) {
 
+        # Don't need to write a c:errValType tag.
+    }
+    elsif ( $error_bars->{_type} eq 'cust' ) {
+
+        # Write the custom error tags.
+        $self->_write_custom_error( $error_bars );
+    }
+    else {
         # Write the c:val element.
         $self->_write_error_val( $error_bars->{_value} );
     }
@@ -4819,6 +4873,94 @@ sub _write_error_val {
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:val', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_custom_error()
+#
+# Write the custom error bars tags.
+#
+sub _write_custom_error {
+
+    my $self       = shift;
+    my $error_bars = shift;
+
+    if ( $error_bars->{_plus_values} ) {
+
+        # Write the c:plus element.
+        $self->xml_start_tag( 'c:plus' );
+
+        if ( ref $error_bars->{_plus_values} eq 'ARRAY' ) {
+            $self->_write_num_lit( $error_bars->{_plus_values} );
+        }
+        else {
+            $self->_write_num_ref( $error_bars->{_plus_values},
+                $error_bars->{_plus_data}, 'num' );
+        }
+
+        $self->xml_end_tag( 'c:plus' );
+    }
+
+    if ( $error_bars->{_minus_values} ) {
+
+        # Write the c:minus element.
+        $self->xml_start_tag( 'c:minus' );
+
+        if ( ref $error_bars->{_minus_values} eq 'ARRAY' ) {
+            $self->_write_num_lit( $error_bars->{_minus_values} );
+        }
+        else {
+            $self->_write_num_ref( $error_bars->{_minus_values},
+                $error_bars->{_minus_data}, 'num' );
+        }
+
+        $self->xml_end_tag( 'c:minus' );
+    }
+}
+
+
+
+##############################################################################
+#
+# _write_num_lit()
+#
+# Write the <c:numLit> element for literal number list elements.
+#
+sub _write_num_lit {
+
+    my $self = shift;
+    my $data  = shift;
+    my $count = @$data;
+
+
+    # Write the c:numLit element.
+    $self->xml_start_tag( 'c:numLit' );
+
+    # Write the c:formatCode element.
+    $self->_write_format_code( 'General' );
+
+    # Write the c:ptCount element.
+    $self->_write_pt_count( $count );
+
+    for my $i ( 0 .. $count - 1 ) {
+        my $token = $data->[$i];
+
+        # Write non-numeric data as 0.
+        if ( defined $token
+            && $token !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ )
+        {
+            $token = 0;
+        }
+
+        # Write the c:pt element.
+        $self->_write_pt( $i, $token );
+    }
+
+    $self->xml_end_tag( 'c:numLit' );
+
+
 }
 
 
@@ -5198,6 +5340,7 @@ The properties that can be set are:
     major_unit
     crossing
     reverse
+    position_axis
     log_base
     label_position
     major_gridlines
@@ -5279,6 +5422,15 @@ The C<crossing> value can either be the string C<'max'> to set the crossing at t
 B<For category axes the numeric value must be an integer> to represent the category number that the axis crosses at. For value axes it can have any value associated with the axis.
 
 If crossing is omitted (the default) the crossing will be set automatically by Excel based on the chart data.
+
+=item * C<position_axis>
+
+Position the axis on or between the axis tick marks. (Applicable to category axes only.)
+
+There are two allowable values C<on_tick> and C<between>:
+
+    $chart->set_x_axis( position_axis => 'on_tick' );
+    $chart->set_x_axis( position_axis => 'between' );
 
 =item * C<reverse>
 
@@ -5443,12 +5595,21 @@ The default legend position is C<right>. The available positions are:
     overlay_left
     overlay_right
 
-=item * delete_series
+=item * C<delete_series>
 
 This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
 
     # Delete/hide series index 0 and 2 from the legend.
     $chart->set_legend( delete_series => [0, 2] );
+
+=item * C<font>
+
+Set the font properties of the chart legend:
+
+    $chart->set_legend( font => { bold => 1, italic => 1 } );
+
+See the L</CHART FONTS> section below.
+
 
 =back
 
@@ -5757,7 +5918,9 @@ Error bars can be added to a chart series to indicate error bounds in the data. 
 The following properties can be set for error bars in a chart series.
 
     type
-    value       (for all types except standard error)
+    value        (for all types except standard error and custom)
+    plus_values  (for custom only)
+    minus_values (for custom only)
     direction
     end_style
     line
@@ -5775,10 +5938,9 @@ The available error bars types are available:
     percentage
     standard_deviation
     standard_error
+    custom
 
-Note, the "custom" error bars type is not supported.
-
-All error bar types, except for C<standard_error> must also have a value associated with it for the error bounds:
+All error bar types, except for C<standard_error> and C<custom> must also have a value associated with it for the error bounds:
 
     $chart->add_series(
         values       => '=Sheet1!$B$1:$B$5',
@@ -5787,6 +5949,34 @@ All error bar types, except for C<standard_error> must also have a value associa
             value => 5,
         },
     );
+
+The C<custom> error bar type must specify C<plus_values> and C<minus_values> which should either by a C<Sheet1!$A$1:$A$5> type range formula or an arrayref of
+values:
+
+    $chart->add_series(
+        categories   => '=Sheet1!$A$1:$A$5',
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type         => 'custom',
+            plus_values  => '=Sheet1!$C$1:$C$5',
+            minus_values => '=Sheet1!$D$1:$D$5',
+        },
+    );
+
+    # or
+
+
+    $chart->add_series(
+        categories   => '=Sheet1!$A$1:$A$5',
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type         => 'custom',
+            plus_values  => [1, 1, 1, 1, 1],
+            minus_values => [2, 2, 2, 2, 2],
+        },
+    );
+
+Note, as in Excel the items in the C<minus_values> do not need to be negative.
 
 The C<direction> property sets the direction of the error bars. It should be one of the following:
 
@@ -6319,7 +6509,7 @@ It is possible to add a secondary axis of the same type to a chart by setting th
     __END__
 
 
-Note, it isn’t currently possible to add a secondary axis of a different chart type (for example line and column).
+Note, it isn't currently possible to add a secondary axis of a different chart type (for example line and column).
 
 
 =head1 TODO
