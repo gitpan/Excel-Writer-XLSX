@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.73';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -354,6 +354,15 @@ sub set_title {
 
     # Set the font properties if present.
     $self->{_title_font} = $self->_convert_font_args( $arg{name_font} );
+
+    # Set the title layout.
+    $self->{_title_layout} = $self->_get_layout_properties( $arg{layout}, 1 );
+
+    # Set the title overlay option.
+    $self->{_title_overlay} = $arg{overlay};
+
+    # Set the no automatic title option.
+    $self->{_title_none} = $arg{none};
 }
 
 
@@ -371,6 +380,14 @@ sub set_legend {
     $self->{_legend_position}      = $arg{position} || 'right';
     $self->{_legend_delete_series} = $arg{delete_series};
     $self->{_legend_font}          = $self->_convert_font_args( $arg{font} );
+
+    # Set the legend layout.
+    $self->{_legend_layout} = $self->_get_layout_properties( $arg{layout} );
+
+    # Turn off the legend.
+    if ( $arg{none} ) {
+        $self->{_legend_position} = 'none';
+    }
 }
 
 
@@ -674,6 +691,9 @@ sub _convert_axis_args {
     # Set the font properties if present.
     $axis->{_num_font}  = $self->_convert_font_args( $arg{num_font} );
     $axis->{_name_font} = $self->_convert_font_args( $arg{name_font} );
+
+    # Set the axis name layout.
+    $axis->{_layout} = $self->_get_layout_properties( $arg{name_layout}, 1 );
 
     return $axis;
 }
@@ -1056,7 +1076,7 @@ sub _get_marker_properties {
         diamond    => 'diamond',
         triangle   => 'triangle',
         x          => 'x',
-        star       => 'start',
+        star       => 'star',
         dot        => 'dot',
         short_dash => 'dot',
         dash       => 'dash',
@@ -1359,14 +1379,80 @@ sub _get_area_properties {
     # Set the fill properties for the chartarea.
     my $fill = $self->_get_fill_properties( $arg{fill} );
 
+    # Set the plotarea layout.
+    my $layout = $self->_get_layout_properties( $arg{layout} );
 
-    $area->{_line} = $line;
-    $area->{_fill} = $fill;
+    $area->{_line}   = $line;
+    $area->{_fill}   = $fill;
+    $area->{_layout} = $layout;
 
     return $area;
 }
 
 
+###############################################################################
+#
+# _get_layout_properties()
+#
+# Convert user defined layout properties to the format required internally.
+#
+sub _get_layout_properties {
+
+    my $self    = shift;
+    my $args    = shift;
+    my $is_text = shift;
+    my $layout  = {};
+    my @properties;
+    my %allowable;
+
+    return if !$args;
+
+    if ( $is_text ) {
+        @properties = ( 'x', 'y' );
+    }
+    else {
+        @properties = ( 'x', 'y', 'width', 'height' );
+    }
+
+    # Check for valid properties.
+    @allowable{@properties} = undef;
+
+    for my $key ( keys %$args ) {
+
+        if ( !exists $allowable{$key} ) {
+            warn "Property '$key' not allowed in layout options\n";
+            return;
+        }
+    }
+
+    # Set the layout properties.
+    for my $property ( @properties ) {
+
+        if ( !exists $args->{$property} ) {
+            warn "Property '$property' must be specified in layout options\n";
+            return;
+        }
+
+        my $value = $args->{$property};
+
+        if ( $value !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ ) {
+            warn "Property '$property' value '$value' must be numeric"
+              . " in layout options\n";
+            return;
+        }
+
+        if ( $value < 0 || $value > 1 ) {
+            warn "Property '$property' value '$value' must be in range "
+              . "0 < x <= 1 in layout options\n";
+            return;
+        }
+
+        # Convert to the format used by Excel for easier testing
+        $layout->{$property} = sprintf "%.17g", $value;
+    }
+
+    return $layout;
+}
 
 
 ###############################################################################
@@ -1668,13 +1754,35 @@ sub _write_chart {
     $self->xml_start_tag( 'c:chart' );
 
     # Write the chart title elements.
-    my $title;
-    if ( $title = $self->{_title_formula} ) {
-        $self->_write_title_formula( $title, $self->{_title_data_id},
-            undef, $self->{_title_font} );
+
+    if ( $self->{_title_none} ) {
+
+        # Turn off the title.
+        $self->_write_auto_title_deleted();
     }
-    elsif ( $title = $self->{_title_name} ) {
-        $self->_write_title_rich( $title, undef, $self->{_title_font} );
+    else {
+        my $title;
+        if ( $title = $self->{_title_formula} ) {
+            $self->_write_title_formula(
+
+                $title,
+                $self->{_title_data_id},
+                undef,
+                $self->{_title_font},
+                $self->{_title_layout},
+                $self->{_title_overlay}
+            );
+        }
+        elsif ( $title = $self->{_title_name} ) {
+            $self->_write_title_rich(
+
+                $title,
+                undef,
+                $self->{_title_font},
+                $self->{_title_layout},
+                $self->{_title_overlay}
+            );
+        }
     }
 
     # Write the c:plotArea element.
@@ -1726,7 +1834,7 @@ sub _write_plot_area {
     $self->xml_start_tag( 'c:plotArea' );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $self->{_plotarea}->{_layout}, 'plot' );
 
     # Write the subclass chart type elements for primary and secondary axes.
     $self->_write_chart_type( primary_axes => 1 );
@@ -1774,11 +1882,55 @@ sub _write_plot_area {
 #
 sub _write_layout {
 
-    my $self = shift;
+    my $self   = shift;
+    my $layout = shift;
+    my $type   = shift;
 
-    $self->xml_empty_tag( 'c:layout' );
+    if ( !$layout ) {
+        # Automatic layout.
+        $self->xml_empty_tag( 'c:layout' );
+    }
+    else {
+        # User defined manual layout.
+        $self->xml_start_tag( 'c:layout' );
+        $self->_write_manual_layout( $layout, $type );
+        $self->xml_end_tag( 'c:layout' );
+    }
 }
 
+##############################################################################
+#
+# _write_manual_layout()
+#
+# Write the <c:manualLayout> element.
+#
+sub _write_manual_layout {
+
+    my $self   = shift;
+    my $layout = shift;
+    my $type   = shift;
+
+    $self->xml_start_tag( 'c:manualLayout' );
+
+    # Plotarea has a layoutTarget element.
+    if ( $type eq 'plot' ) {
+        $self->xml_empty_tag( 'c:layoutTarget', ( 'val' => 'inner' ) );
+    }
+
+    # Set the x, y positions.
+    $self->xml_empty_tag( 'c:xMode', ( 'val' => 'edge' ) );
+    $self->xml_empty_tag( 'c:yMode', ( 'val' => 'edge' ) );
+    $self->xml_empty_tag( 'c:x', ( 'val' => $layout->{x} ) );
+    $self->xml_empty_tag( 'c:y', ( 'val' => $layout->{y} ) );
+
+    # For plotarea and legend set the width and height.
+    if ( $type ne 'text' ) {
+        $self->xml_empty_tag( 'c:w', ( 'val' => $layout->{width} ) );
+        $self->xml_empty_tag( 'c:h', ( 'val' => $layout->{height} ) );
+    }
+
+    $self->xml_end_tag( 'c:manualLayout' );
+}
 
 ##############################################################################
 #
@@ -2186,10 +2338,11 @@ sub _write_cat_axis {
     if ( $title = $x_axis->{_formula} ) {
 
         $self->_write_title_formula( $title, $x_axis->{_data_id}, $horiz,
-            $x_axis->{_name_font} );
+            $x_axis->{_name_font}, $x_axis->{_layout} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font} );
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font},
+            $x_axis->{_layout} );
     }
 
     # Write the c:numFmt element.
@@ -2283,10 +2436,11 @@ sub _write_val_axis {
     my $title;
     if ( $title = $y_axis->{_formula} ) {
         $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
-            $y_axis->{_name_font} );
+            $y_axis->{_name_font}, $y_axis->{_layout} );
     }
     elsif ( $title = $y_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $y_axis->{_name_font} );
+        $self->_write_title_rich( $title, $horiz, $y_axis->{_name_font},
+            $y_axis->{_layout} );
     }
 
     # Write the c:numberFormat element.
@@ -2376,10 +2530,11 @@ sub _write_cat_val_axis {
     my $title;
     if ( $title = $x_axis->{_formula} ) {
         $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
-            $x_axis->{_name_font} );
+            $x_axis->{_name_font}, $x_axis->{_layout} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font} );
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font},
+            $x_axis->{_layout} );
     }
 
     # Write the c:numberFormat element.
@@ -2468,10 +2623,11 @@ sub _write_date_axis {
     my $title;
     if ( $title = $x_axis->{_formula} ) {
         $self->_write_title_formula( $title, $x_axis->{_data_id}, undef,
-            $x_axis->{_name_font} );
+            $x_axis->{_name_font}, $x_axis->{_layout} );
     }
     elsif ( $title = $x_axis->{_name} ) {
-        $self->_write_title_rich( $title, undef, $x_axis->{_name_font} );
+        $self->_write_title_rich( $title, undef, $x_axis->{_name_font},
+            $x_axis->{_layout} );
     }
 
     # Write the c:numFmt element.
@@ -3073,7 +3229,7 @@ sub _write_legend {
     }
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $self->{_legend_layout}, 'legend' );
 
     # Write the c:txPr element.
     if ($font) {
@@ -3248,16 +3404,34 @@ sub _write_page_setup {
 
 ##############################################################################
 #
+# _write_auto_title_deleted()
+#
+# Write the <c:autoTitleDeleted> element.
+#
+sub _write_auto_title_deleted {
+
+    my $self = shift;
+
+    my @attributes = ( 'val' => 1 );
+
+    $self->xml_empty_tag( 'c:autoTitleDeleted', @attributes );
+}
+
+
+##############################################################################
+#
 # _write_title_rich()
 #
 # Write the <c:title> element for a rich string.
 #
 sub _write_title_rich {
 
-    my $self  = shift;
-    my $title = shift;
-    my $horiz = shift;
-    my $font  = shift;
+    my $self    = shift;
+    my $title   = shift;
+    my $horiz   = shift;
+    my $font    = shift;
+    my $layout  = shift;
+    my $overlay = shift;
 
     $self->xml_start_tag( 'c:title' );
 
@@ -3265,7 +3439,10 @@ sub _write_title_rich {
     $self->_write_tx_rich( $title, $horiz, $font );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $layout, 'text' );
+
+    # Write the c:overlay element.
+    $self->_write_overlay() if $overlay;
 
     $self->xml_end_tag( 'c:title' );
 }
@@ -3284,6 +3461,8 @@ sub _write_title_formula {
     my $data_id = shift;
     my $horiz   = shift;
     my $font    = shift;
+    my $layout  = shift;
+    my $overlay = shift;
 
     $self->xml_start_tag( 'c:title' );
 
@@ -3291,7 +3470,10 @@ sub _write_title_formula {
     $self->_write_tx_formula( $title, $data_id );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $layout, 'text' );
+
+    # Write the c:overlay element.
+    $self->_write_overlay() if $overlay;
 
     # Write the c:txPr element.
     $self->_write_tx_pr( $horiz, $font );
@@ -3627,19 +3809,6 @@ sub _write_a_r {
 # Write the <a:rPr> element.
 #
 sub _write_a_r_pr {
-
-    # my $self = shift;
-    # my $font  = shift;
-    # my $lang = 'en-US';
-
-    # my @attributes = ( 'lang' => $lang, );
-
-    # my @font_attrs = $self->_get_font_style_attributes($font);
-
-    # push @attributes, @font_attrs;
-
-    # $self->xml_empty_tag( 'a:rPr', @attributes );
-
 
     my $self      = shift;
     my $font      = shift;
@@ -5332,6 +5501,7 @@ The properties that can be set are:
 
     name
     name_font
+    name_layout
     num_font
     num_format
     min
@@ -5366,7 +5536,19 @@ Set the font properties for the axis title. (Applicable to category and value ax
 
     $chart->set_x_axis( name_font => { name => 'Arial', size => 10 } );
 
-See the L</CHART FONTS> section below.
+=item * C<name_layout>
+
+Set the C<(x, y)> position of the axis caption in chart relative units. (Applicable to category and value axes).
+
+    $chart->set_x_axis(
+        name        => 'X axis',
+        name_layout => {
+            x => 0.34,
+            y => 0.85,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
 
 =item * C<num_font>
 
@@ -5566,6 +5748,31 @@ Set the name (title) for the chart. The name is displayed above the chart. The n
 
 Set the font properties for the chart title. See the L</CHART FONTS> section below.
 
+=item * C<overlay>
+
+Allow the title to be overlaid on the chart. Generally used with the layout property below.
+
+=item * C<layout>
+
+Set the C<(x, y)> position of the title in chart relative units:
+
+    $chart->set_title(
+        name    => 'Title',
+        overlay => 1,
+        layout  => {
+            x => 0.42,
+            y => 0.14,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
+
+=item * C<none>
+
+By default Excel adds an automatic chart title to charts with a single series and a user defined series name. The C<none> option turns this default title off. It also turns off all other C<set_title()> options.
+
+    $chart->set_title( none => 1 );
+
 =back
 
 
@@ -5573,11 +5780,20 @@ Set the font properties for the chart title. See the L</CHART FONTS> section bel
 
 The C<set_legend()> method is used to set properties of the chart legend.
 
-    $chart->set_legend( position => 'none' );
 
 The properties that can be set are:
 
 =over
+
+=item * C<none>
+
+The C<none> option turns off the chart legend. In Excel chart legends are on by default:
+
+    $chart->set_legend( none => 1 );
+
+Note, for backward compatibility, it is also possible to turn off the legend via the C<position> property:
+
+    $chart->set_legend( position => 'none' );
 
 =item * C<position>
 
@@ -5587,13 +5803,29 @@ Set the position of the chart legend.
 
 The default legend position is C<right>. The available positions are:
 
-    none
     top
     bottom
     left
     right
     overlay_left
     overlay_right
+    none
+
+=item * C<layout>
+
+Set the C<(x, y)> position of the legend in chart relative units:
+
+    $chart->set_legend(
+        layout => {
+            x      => 0.80,
+            y      => 0.37,
+            width  => 0.12,
+            height => 0.25,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
+
 
 =item * C<delete_series>
 
@@ -5657,6 +5889,21 @@ Set the border properties of the plotarea such as colour and style. See the L</C
 =item * C<fill>
 
 Set the fill properties of the plotarea such as colour. See the L</CHART FORMATTING> section below.
+
+=item * C<layout>
+
+Set the C<(x, y)> position of the plotarea in chart relative units:
+
+    $chart->set_plotarea(
+        layout => {
+            x      => 0.35,
+            y      => 0.26,
+            width  => 0.62,
+            height => 0.50,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
 
 =back
 
@@ -6360,6 +6607,78 @@ Here is an example of Font formatting in a Chart program:
     );
 
 
+
+=head1 CHART LAYOUT
+
+The position of the chart in the worksheet is controlled by the C<set_size()> method shown above.
+
+It is also possible to change the layout of the following chart sub-objects:
+
+    plotarea
+    legend
+    title
+    x_axis caption
+    y_axis caption
+
+Here are some examples:
+
+    $chart->set_plotarea(
+        layout => {
+            x      => 0.35,
+            y      => 0.26,
+            width  => 0.62,
+            height => 0.50,
+        }
+    );
+
+    $chart->set_legend(
+        layout => {
+            x      => 0.80,
+            y      => 0.37,
+            width  => 0.12,
+            height => 0.25,
+        }
+    );
+
+    $chart->set_title(
+        name   => 'Title',
+        layout => {
+            x => 0.42,
+            y => 0.14,
+        }
+    );
+
+    $chart->set_x_axis(
+        name        => 'X axis',
+        name_layout => {
+            x => 0.34,
+            y => 0.85,
+        }
+    );
+
+Note that it is only possible to change the width and height for the C<plotarea> and C<legend> objects. For the other text based objects the width and height are changed by the font dimensions.
+
+The layout units must be a float in the range C<0 < x <= 1> and are expressed as a percentage of the chart dimensions as shown below:
+
+=begin html
+
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/layout.png" width="826" height="423" alt="Chart object layout." /></center></p>
+
+=end html
+
+From this the layout units are calculated as follows:
+
+    layout:
+        width  = w / W
+        height = h / H
+        x      = a / W
+        y      = b / H
+
+These units are slightly cumbersome but are required by Excel so that the chart object positions remain relative to each other if the chart is resized by the user.
+
+Note that for C<plotarea> the origin is the top left corner in the plotarea itself and does not take into account the axes.
+
+
 =head1 WORKSHEET METHODS
 
 In Excel a chartsheet (i.e, a chart that isn't embedded) shares properties with data worksheets such as tab selection, headers, footers, margins, and print properties.
@@ -6541,6 +6860,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

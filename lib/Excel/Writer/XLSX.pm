@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.73';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.73 of Excel::Writer::XLSX, released November 8, 2013.
+This document refers to version 0.74 of Excel::Writer::XLSX, released November 17, 2013.
 
 
 
@@ -465,6 +465,8 @@ If the sheet name contains spaces or special characters you must enclose it in s
     $workbook->define_name( "'New Data'!Sales",  '=Sheet2!$G$1:$G$10' );
 
 See the defined_name.pl program in the examples dir of the distro.
+
+Refer to the following to see Excel's syntax rules for defined names: L<http://office.microsoft.com/en-001/excel-help/define-and-use-names-in-formulas-HA010147120.aspx#BMsyntax_rules_for_names>
 
 
 
@@ -6612,6 +6614,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

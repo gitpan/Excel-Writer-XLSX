@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.73';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -721,15 +721,21 @@ sub define_name {
         return -1;
     }
 
-    # Warn if the sheet name contains invalid chars as defined by Excel help.
-    if ( $name !~ m/^[a-zA-Z_\\][a-zA-Z_.]+/ ) {
+    # Warn if the name contains invalid chars as defined by Excel help.
+    if ( $name !~ m/^[\w\\][\w.]*$/ || $name =~ m/^\d/ ) {
         carp "Invalid characters in name '$name' used in defined_name()\n";
         return -1;
     }
 
-    # Warn if the sheet name looks like a cell name.
+    # Warn if the name looks like a cell name.
     if ( $name =~ m/^[a-zA-Z][a-zA-Z]?[a-dA-D]?[0-9]+$/ ) {
         carp "Invalid name '$name' looks like a cell name in defined_name()\n";
+        return -1;
+    }
+
+    # Warn if the name looks like a R1C1.
+    if ( $name =~ m/^[rcRC]$/ || $name =~ m/^[rcRC]\d+[rcRC]\d+$/ ) {
+        carp "Invalid name '$name' like a RC cell ref in defined_name()\n";
         return -1;
     }
 
@@ -2332,6 +2338,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXIII, John McNamara.
+(c) MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

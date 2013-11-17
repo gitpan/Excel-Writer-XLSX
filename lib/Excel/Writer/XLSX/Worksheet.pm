@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.73';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -3374,7 +3374,7 @@ sub conditional_formatting {
     if ( @_ != 5 && @_ != 3 ) { return -1 }
 
     # The final hashref contains the validation parameters.
-    my $param = pop;
+    my $options = pop;
 
     # Make the last row/col the same as the first if not defined.
     my ( $row1, $col1, $row2, $col2 ) = @_;
@@ -3389,11 +3389,14 @@ sub conditional_formatting {
 
 
     # Check that the last parameter is a hash list.
-    if ( ref $param ne 'HASH' ) {
-        carp "Last parameter '$param' in conditional_formatting() "
+    if ( ref $options ne 'HASH' ) {
+        carp "Last parameter in conditional_formatting() "
           . "must be a hash ref";
         return -3;
     }
+
+    # Copy the user params.
+    my $param = {%$options};
 
     # List of valid input parameters.
     my %valid_parameter = (
@@ -8952,6 +8955,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXIII, John McNamara.
+(c) MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
