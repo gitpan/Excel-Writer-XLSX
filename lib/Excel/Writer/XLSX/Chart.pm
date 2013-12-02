@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.74';
+our $VERSION = '0.75';
 
 
 ###############################################################################
@@ -652,6 +652,7 @@ sub _convert_axis_args {
         _label_position    => $arg{label_position},
         _num_format        => $arg{num_format},
         _num_format_linked => $arg{num_format_linked},
+        _interval_unit     => $arg{interval_unit},
         _visible           => defined $arg{visible} ? $arg{visible} : 1,
     };
 
@@ -2384,6 +2385,9 @@ sub _write_cat_axis {
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
 
+    # Write the c:tickLblSkip element.
+    $self->_write_tick_lbl_skip( $x_axis->{_interval_unit} );
+
     $self->xml_end_tag( 'c:catAx' );
 }
 
@@ -2665,6 +2669,9 @@ sub _write_date_axis {
 
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
+
+    # Write the c:tickLblSkip element.
+    $self->_write_tick_lbl_skip( $x_axis->{_interval_unit} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $x_axis->{_major_unit} );
@@ -3036,6 +3043,25 @@ sub _write_label_offset {
 
 ##############################################################################
 #
+# _write_tick_lbl_skip()
+#
+# Write the <c:tickLblSkip> element.
+#
+sub _write_tick_lbl_skip {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:tickLblSkip', @attributes );
+}
+
+
+##############################################################################
+#
 # _write_major_gridlines()
 #
 # Write the <c:majorGridlines> element.
@@ -3232,7 +3258,7 @@ sub _write_legend {
     $self->_write_layout( $self->{_legend_layout}, 'legend' );
 
     # Write the c:txPr element.
-    if ($font) {
+    if ( $font ) {
         $self->_write_tx_pr( undef, $font );
     }
 
@@ -3558,15 +3584,20 @@ sub _write_tx_formula {
 #
 sub _write_rich {
 
-    my $self  = shift;
-    my $title = shift;
-    my $horiz = shift;
-    my $font  = shift;
+    my $self     = shift;
+    my $title    = shift;
+    my $horiz    = shift;
+    my $rotation = undef;
+    my $font     = shift;
+
+    if ( $font && exists $font->{_rotation} ) {
+        $rotation = $font->{_rotation};
+    }
 
     $self->xml_start_tag( 'c:rich' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz );
+    $self->_write_a_body_pr( $rotation, $horiz );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
@@ -3583,41 +3614,20 @@ sub _write_rich {
 # _write_a_body_pr()
 #
 # Write the <a:bodyPr> element.
-#
 sub _write_a_body_pr {
 
     my $self  = shift;
+    my $rot   = shift;
     my $horiz = shift;
-    my $rot   = -5400000;
-    my $vert  = 'horz';
-
-    my @attributes = (
-        'rot'  => $rot,
-        'vert' => $vert,
-    );
-
-    @attributes = () if !$horiz;
-
-    $self->xml_empty_tag( 'a:bodyPr', @attributes );
-}
-
-
-##############################################################################
-#
-# _write_axis_body_pr()
-#
-# Write the <a:bodyPr> element for axis fonts.
-#
-sub _write_axis_body_pr {
-
-    my $self = shift;
-    my $rot  = shift;
-    my $vert = shift;
 
     my @attributes = ();
 
-    push @attributes, ( 'rot'  => $rot )  if defined $rot;
-    push @attributes, ( 'vert' => $vert ) if defined $vert;
+    if ( !defined $rot && $horiz ) {
+        $rot = -5400000;
+    }
+
+    push @attributes, ( 'rot' => $rot ) if defined $rot;
+    push @attributes, ( 'vert' => 'horz' ) if $horiz;
 
     $self->xml_empty_tag( 'a:bodyPr', @attributes );
 }
@@ -3869,14 +3879,19 @@ sub _write_a_t {
 #
 sub _write_tx_pr {
 
-    my $self  = shift;
-    my $horiz = shift;
-    my $font  = shift;
+    my $self     = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $rotation = undef;
+
+    if ( $font && exists $font->{_rotation} ) {
+        $rotation = $font->{_rotation};
+    }
 
     $self->xml_start_tag( 'c:txPr' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz );
+    $self->_write_a_body_pr( $rotation, $horiz );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
@@ -4752,7 +4767,7 @@ sub _write_axis_font {
     return unless $font;
 
     $self->xml_start_tag( 'c:txPr' );
-    $self->_write_axis_body_pr($font->{_rotation});
+    $self->_write_a_body_pr($font->{_rotation});
     $self->_write_a_lst_style();
     $self->xml_start_tag( 'a:p' );
 
@@ -5508,6 +5523,7 @@ The properties that can be set are:
     max
     minor_unit
     major_unit
+    interval_unit
     crossing
     reverse
     position_axis
@@ -5590,6 +5606,12 @@ Set the increment of the minor units in the axis range. (Applicable to value axe
 Set the increment of the major units in the axis range. (Applicable to value axes only.)
 
     $chart->set_x_axis( major_unit => 2 );
+
+=item * C<interval_unit>
+
+Set the interval unit for a category axis. (Applicable to category axes only.)
+
+    $chart->set_x_axis( interval_unit => 2 );
 
 =item * C<crossing>
 

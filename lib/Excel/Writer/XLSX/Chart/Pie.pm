@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.74';
+our $VERSION = '0.75';
 
 
 ###############################################################################
@@ -118,9 +118,17 @@ sub _write_plot_area {
 #
 sub _write_legend {
 
-    my $self     = shift;
-    my $position = $self->{_legend_position};
-    my $overlay  = 0;
+    my $self          = shift;
+    my $position      = $self->{_legend_position};
+    my $font          = $self->{_legend_font};
+    my @delete_series = ();
+    my $overlay       = 0;
+
+    if ( defined $self->{_legend_delete_series}
+        && ref $self->{_legend_delete_series} eq 'ARRAY' )
+    {
+        @delete_series = @{ $self->{_legend_delete_series} };
+    }
 
     if ( $position =~ s/^overlay_// ) {
         $overlay = 1;
@@ -143,6 +151,13 @@ sub _write_legend {
     # Write the c:legendPos element.
     $self->_write_legend_pos( $position );
 
+    # Remove series labels from the legend.
+    for my $index ( @delete_series ) {
+
+        # Write the c:legendEntry element.
+        $self->_write_legend_entry( $index );
+    }
+
     # Write the c:layout element.
     $self->_write_layout( $self->{_legend_layout}, 'legend' );
 
@@ -150,7 +165,7 @@ sub _write_legend {
     $self->_write_overlay() if $overlay;
 
     # Write the c:txPr element. Over-ridden.
-    $self->_write_tx_pr_legend();
+    $self->_write_tx_pr_legend( 0, $font );
 
     $self->xml_end_tag( 'c:legend' );
 }
@@ -164,19 +179,25 @@ sub _write_legend {
 #
 sub _write_tx_pr_legend {
 
-    my $self  = shift;
-    my $horiz = 0;
+    my $self     = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $rotation = undef;
+
+    if ( $font && exists $font->{_rotation} ) {
+        $rotation = $font->{_rotation};
+    }
 
     $self->xml_start_tag( 'c:txPr' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz );
+    $self->_write_a_body_pr( $rotation, $horiz );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p_legend();
+    $self->_write_a_p_legend( $font );
 
     $self->xml_end_tag( 'c:txPr' );
 }
@@ -190,13 +211,13 @@ sub _write_tx_pr_legend {
 #
 sub _write_a_p_legend {
 
-    my $self  = shift;
-    my $title = shift;
+    my $self = shift;
+    my $font = shift;
 
     $self->xml_start_tag( 'a:p' );
 
     # Write the a:pPr element.
-    $self->_write_a_p_pr_legend();
+    $self->_write_a_p_pr_legend( $font );
 
     # Write the a:endParaRPr element.
     $self->_write_a_end_para_rpr();
@@ -214,6 +235,7 @@ sub _write_a_p_legend {
 sub _write_a_p_pr_legend {
 
     my $self = shift;
+    my $font = shift;
     my $rtl  = 0;
 
     my @attributes = ( 'rtl' => $rtl );
@@ -221,7 +243,7 @@ sub _write_a_p_pr_legend {
     $self->xml_start_tag( 'a:pPr', @attributes );
 
     # Write the a:defRPr element.
-    $self->_write_a_def_rpr();
+    $self->_write_a_def_rpr( $font );
 
     $self->xml_end_tag( 'a:pPr' );
 }
