@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.75';
+our $VERSION = '0.76';
 
 
 ###############################################################################
@@ -1611,6 +1611,14 @@ sub _add_chart_data {
 
             # Skip if we couldn't parse the formula.
             next RANGE if !defined $sheetname;
+
+            # Handle non-contiguous ranges: (Sheet1!$A$1:$A$2,Sheet1!$A$4:$A$5).
+            # We don't try to parse the ranges. We just return an empty list.
+            if ( $sheetname =~ m/^\([^,]+,/ ) {
+                $chart->{_formula_data}->[$id] = [];
+                $seen_ranges{$range} = [];
+                next RANGE;
+            }
 
             # Die if the name is unknown since it indicates a user error in
             # a chart series formula.
