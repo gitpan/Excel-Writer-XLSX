@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Worksheet;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2014, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.76';
+our $VERSION = '0.77';
 
 
 ###############################################################################
@@ -3313,6 +3313,47 @@ sub data_validation {
         }
     }
 
+    # Check that the input title doesn't exceed the maximum length.
+    if ( $param->{input_title} and length $param->{input_title} > 32 ) {
+        carp "Length of input title '$param->{input_title}'"
+          . " exceeds Excel's limit of 32";
+        return -3;
+    }
+
+    # Check that the error title don't exceed the maximum length.
+    if ( $param->{error_title} and length $param->{error_title} > 32 ) {
+        carp "Length of error title '$param->{error_title}'"
+          . " exceeds Excel's limit of 32";
+        return -3;
+    }
+
+    # Check that the input message don't exceed the maximum length.
+    if ( $param->{input_message} and length $param->{input_message} > 255 ) {
+        carp "Length of input message '$param->{input_message}'"
+          . " exceeds Excel's limit of 255";
+        return -3;
+    }
+
+    # Check that the error message don't exceed the maximum length.
+    if ( $param->{error_message} and length $param->{error_message} > 255 ) {
+        carp "Length of error message '$param->{error_message}'"
+          . " exceeds Excel's limit of 255";
+        return -3;
+    }
+
+    # Check that the input list don't exceed the maximum length.
+    if ( $param->{validate} eq 'list' ) {
+
+        if ( ref $param->{value} eq 'ARRAY' ) {
+
+            my $formula = join ',', @{ $param->{value} };
+            if ( length $formula > 255 ) {
+                carp "Length of list items '$formula' exceeds Excel's "
+                  . "limit of 255, use a formula range instead";
+                return -3;
+            }
+        }
+    }
 
     # Set some defaults if they haven't been defined by the user.
     $param->{ignore_blank} = 1 if !defined $param->{ignore_blank};
@@ -4987,7 +5028,7 @@ sub insert_chart {
     $x_scale  = $chart->{_x_scale}  if $chart->{_x_scale} != 1;
     $y_scale  = $chart->{_y_scale}  if $chart->{_y_scale} != 1;
     $x_offset = $chart->{_x_offset} if $chart->{_x_offset};
-    $x_offset = $chart->{_y_offset} if $chart->{_y_offset};
+    $y_offset = $chart->{_y_offset} if $chart->{_y_offset};
 
     push @{ $self->{_charts} },
       [ $row, $col, $chart, $x_offset, $y_offset, $x_scale, $y_scale ];

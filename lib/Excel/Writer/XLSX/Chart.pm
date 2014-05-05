@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Chart;
 #
 # Used in conjunction with Excel::Writer::XLSX.
 #
-# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2014, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.76';
+our $VERSION = '0.77';
 
 
 ###############################################################################
@@ -500,7 +500,7 @@ sub set_size {
     $self->{_x_scale}  = $args{x_scale}  if $args{x_scale};
     $self->{_y_scale}  = $args{y_scale}  if $args{y_scale};
     $self->{_x_offset} = $args{x_offset} if $args{x_offset};
-    $self->{_x_offset} = $args{y_offset} if $args{y_offset};
+    $self->{_y_offset} = $args{y_offset} if $args{y_offset};
 
 }
 
@@ -1313,6 +1313,7 @@ sub _get_labels_properties {
             above       => 't',
             bottom      => 'b',
             below       => 'b',
+            inside_base => 'inBase',
             inside_end  => 'inEnd',
             outside_end => 'outEnd',
             best_fit    => 'bestFit',
@@ -5901,7 +5902,7 @@ See the L</CHART LAYOUT> section below.
 
 =item * C<delete_series>
 
-This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
+This allows you to remove 1 or more series from the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
 
     # Delete/hide series index 0 and 2 from the legend.
     $chart->set_legend( delete_series => [0, 2] );
@@ -6369,6 +6370,7 @@ Valid positions are:
     bottom
     above           # Same as top
     below           # Same as bottom
+    inside_base     # Mainly for Column/Bar charts.
     inside_end      # Pie chart mainly.
     outside_end     # Pie chart mainly.
     best_fit        # Pie chart mainly.

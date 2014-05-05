@@ -4,7 +4,7 @@ package Excel::Writer::XLSX;
 #
 # Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 #
-# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2014, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.76';
+our $VERSION = '0.77';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.76 of Excel::Writer::XLSX, released December 31, 2013.
+This document refers to version 0.77 of Excel::Writer::XLSX, released May 6, 2014.
 
 
 
@@ -4455,7 +4455,7 @@ It can be applied to a single cell or a range of cells. You can pass 3 parameter
 
 See also the note about L</Cell notation> for more information.
 
-Using C<A1> style notation is is also possible to specify non-contiguous ranges, separated by a comma. For example:
+Using C<A1> style notation is also possible to specify non-contiguous ranges, separated by a comma. For example:
 
     $worksheet->conditional_formatting( 'A1:D5,A8:D12', {...} );
 
@@ -5757,9 +5757,9 @@ The following example shows some of the basic features of Excel::Writer::XLSX.
 
 
     # Write some numbers
-    $worksheet->write( 2, 0, 1 );
-    $worksheet->write( 3, 0, 1.00000 );
-    $worksheet->write( 4, 0, 2.00001 );
+    $worksheet->write( 2, 0, 3 );
+    $worksheet->write( 3, 0, 3.00000 );
+    $worksheet->write( 4, 0, 3.00001 );
     $worksheet->write( 5, 0, 3.14159 );
 
 
@@ -5769,7 +5769,12 @@ The following example shows some of the basic features of Excel::Writer::XLSX.
 
 
     # Write a hyperlink
-    $worksheet->write( 10, 0, 'http://www.perl.com/' );
+    my $hyperlink_format = $workbook->add_format(
+        color     => 'blue',
+        underline => 1,
+    );
+
+    $worksheet->write( 10, 0, 'http://www.perl.com/', $hyperlink_format );
 
 
 =begin html
