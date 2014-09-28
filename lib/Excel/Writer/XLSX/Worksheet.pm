@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.77';
+our $VERSION = '0.78';
 
 
 ###############################################################################
@@ -52,17 +52,18 @@ sub new {
     my $colmax = 16_384;
     my $strmax = 32767;
 
-    $self->{_name}         = $_[0];
-    $self->{_index}        = $_[1];
-    $self->{_activesheet}  = $_[2];
-    $self->{_firstsheet}   = $_[3];
-    $self->{_str_total}    = $_[4];
-    $self->{_str_unique}   = $_[5];
-    $self->{_str_table}    = $_[6];
-    $self->{_1904}         = $_[7];
-    $self->{_palette}      = $_[8];
-    $self->{_optimization} = $_[9] || 0;
-    $self->{_tempdir}      = $_[10];
+    $self->{_name}            = $_[0];
+    $self->{_index}           = $_[1];
+    $self->{_activesheet}     = $_[2];
+    $self->{_firstsheet}      = $_[3];
+    $self->{_str_total}       = $_[4];
+    $self->{_str_unique}      = $_[5];
+    $self->{_str_table}       = $_[6];
+    $self->{_date_1904}       = $_[7];
+    $self->{_palette}         = $_[8];
+    $self->{_optimization}    = $_[9] || 0;
+    $self->{_tempdir}         = $_[10];
+    $self->{_excel2003_style} = $_[11];
 
     $self->{_ext_sheets}    = [];
     $self->{_fileclosed}    = 0;
@@ -100,6 +101,7 @@ sub new {
     $self->{_header_footer_changed} = 0;
     $self->{_header}                = '';
     $self->{_footer}                = '';
+    $self->{_header_footer_aligns}  = 0;
 
     $self->{_margin_left}   = 0.7;
     $self->{_margin_right}  = 0.7;
@@ -146,8 +148,11 @@ sub new {
     $self->{_outline_on}        = 1;
     $self->{_outline_changed}   = 0;
 
-    $self->{_default_row_height} = 15;
-    $self->{_default_row_zeroed} = 0;
+    $self->{_original_row_height} = 15;
+    $self->{_default_row_height}  = 15;
+    $self->{_default_row_pixels}  = 20;
+    $self->{_default_col_pixels}  = 64;
+    $self->{_default_row_zeroed}  = 0;
 
     $self->{_names} = {};
 
@@ -211,6 +216,19 @@ sub new {
     $self->{_cond_formats} = {};
     $self->{_dxf_priority} = 1;
 
+    if ( $self->{_excel2003_style} ) {
+        $self->{_original_row_height}  = 12.75;
+        $self->{_default_row_height}   = 12.75;
+        $self->{_default_row_pixels}   = 17;
+        $self->{_margin_left}          = 0.75;
+        $self->{_margin_right}         = 0.75;
+        $self->{_margin_top}           = 1;
+        $self->{_margin_bottom}        = 1;
+        $self->{_margin_header}        = 0.5;
+        $self->{_margin_footer}        = 0.5;
+        $self->{_header_footer_aligns} = 1;
+    }
+
     bless $self, $class;
     return $self;
 }
@@ -273,7 +291,6 @@ sub _assemble_xml_file {
         $self->_write_optimized_sheet_data();
     }
 
-
     # Write the sheetProtection element.
     $self->_write_sheet_protection();
 
@@ -281,7 +298,9 @@ sub _assemble_xml_file {
     #$self->_write_sheet_calc_pr();
 
     # Write the worksheet phonetic properties.
-    #$self->_write_phonetic_pr();
+    if ($self->{_excel2003_style}) {
+        $self->_write_phonetic_pr();
+    }
 
     # Write the autoFilter element.
     $self->_write_auto_filter();
@@ -2792,7 +2811,7 @@ sub convert_date_time {
     }
 
     # Set the epoch as 1900 or 1904. Defaults to 1900.
-    my $date_1904 = $self->{_1904};
+    my $date_1904 = $self->{_date_1904};
 
 
     # Special cases for Excel.
@@ -2913,10 +2932,10 @@ sub set_row {
 sub set_default_row {
 
     my $self        = shift;
-    my $height      = shift || 15;
+    my $height      = shift || $self->{_original_row_height};
     my $zero_height = shift || 0;
 
-    if ( $height != 15 ) {
+    if ( $height != $self->{_original_row_height} ) {
         $self->{_default_row_height} = $height;
 
         # Store the row change to allow optimisations.
@@ -4663,7 +4682,7 @@ sub _position_object_pixels {
     }
     else {
         # Optimisation for when the column widths haven't changed.
-        $x_abs += 64 * $col_start;
+        $x_abs += $self->{_default_col_pixels} * $col_start;
     }
 
     $x_abs += $x1;
@@ -4677,7 +4696,7 @@ sub _position_object_pixels {
     }
     else {
         # Optimisation for when the row heights haven't changed.
-        $y_abs += 20 * $row_start;
+        $y_abs += $self->{_default_row_pixels} * $row_start;
     }
 
     $y_abs += $y1;
@@ -4851,7 +4870,7 @@ sub _size_col {
         }
     }
     else {
-        $pixels = 64;
+        $pixels = $self->{_default_col_pixels};
     }
 
     return $pixels;
@@ -5815,7 +5834,7 @@ sub _comment_params {
 #
 sub _button_params {
 
-    my $self = shift;
+    my $self   = shift;
     my $row    = shift;
     my $col    = shift;
     my $params = shift;
@@ -5844,8 +5863,8 @@ sub _button_params {
 
 
     # Ensure that a width and height have been set.
-    my $default_width  = 64;
-    my $default_height = 20;
+    my $default_width  = $self->{_default_col_pixels};
+    my $default_height = $self->{_default_row_pixels};
     $params->{width}  = $default_width  if !$params->{width};
     $params->{height} = $default_height if !$params->{height};
 
@@ -6312,7 +6331,7 @@ sub _write_sheet_format_pr {
 
     my @attributes = ( 'defaultRowHeight' => $default_row_height );
 
-    if ( $self->{_default_row_height} != 15 ) {
+    if ( $self->{_default_row_height} != $self->{_original_row_height} ) {
         push @attributes, ( 'customHeight' => 1 );
     }
 
@@ -6720,9 +6739,17 @@ sub _write_row {
     push @attributes, ( 'spans'        => $spans )    if defined $spans;
     push @attributes, ( 's'            => $xf_index ) if $xf_index;
     push @attributes, ( 'customFormat' => 1 )         if $format;
-    push @attributes, ( 'ht'           => $height )   if $height != 15;
+
+    if ( $height != $self->{_original_row_height} ) {
+        push @attributes, ( 'ht' => $height );
+    }
+
     push @attributes, ( 'hidden'       => 1 )         if $hidden;
-    push @attributes, ( 'customHeight' => 1 )         if $height != 15;
+
+    if ( $height != $self->{_original_row_height} ) {
+        push @attributes, ( 'customHeight' => 1 );
+    }
+
     push @attributes, ( 'outlineLevel' => $level )    if $level;
     push @attributes, ( 'collapsed'    => 1 )         if $collapsed;
 
@@ -6953,7 +6980,7 @@ sub _write_sheet_calc_pr {
 sub _write_phonetic_pr {
 
     my $self    = shift;
-    my $font_id = 1;
+    my $font_id = 0;
     my $type    = 'noConversion';
 
     my @attributes = (
@@ -7157,13 +7184,22 @@ sub _write_print_options {
 sub _write_header_footer {
 
     my $self = shift;
+    my @attributes = ();
 
-    return unless $self->{_header_footer_changed};
+    if ($self->{_header_footer_aligns}) {
+        push @attributes,( 'alignWithMargins' => 0 );
+    }
 
-    $self->xml_start_tag( 'headerFooter' );
-    $self->_write_odd_header() if $self->{_header};
-    $self->_write_odd_footer() if $self->{_footer};
-    $self->xml_end_tag( 'headerFooter' );
+
+    if ( $self->{_header_footer_changed} ) {
+        $self->xml_start_tag( 'headerFooter', @attributes );
+        $self->_write_odd_header() if $self->{_header};
+        $self->_write_odd_footer() if $self->{_footer};
+        $self->xml_end_tag( 'headerFooter' );
+    }
+    elsif ( $self->{_excel2003_style} ) {
+        $self->xml_empty_tag( 'headerFooter', @attributes );
+    }
 }
 
 

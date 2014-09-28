@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.77';
+our $VERSION = '0.78';
 
 
 ###############################################################################
@@ -55,8 +55,10 @@ sub new {
     my $self  = Excel::Writer::XLSX::Package::XMLwriter->new();
 
     $self->{_filename}           = $_[0] || '';
+    my $options                  = $_[1] || {};
+
     $self->{_tempdir}            = undef;
-    $self->{_1904}               = 0;
+    $self->{_date_1904}          = 0;
     $self->{_activesheet}        = 0;
     $self->{_firstsheet}         = 0;
     $self->{_selected}           = 0;
@@ -92,7 +94,30 @@ sub new {
     $self->{_window_width}       = 16095;
     $self->{_window_height}      = 9660;
     $self->{_tab_ratio}          = 500;
+    $self->{_excel2003_style}    = 0;
 
+    $self->{_default_format_properties} = {};
+
+    if ( exists $options->{tempdir} ) {
+        $self->{_tempdir} = $options->{tempdir};
+    }
+
+    if ( exists $options->{date_1904} ) {
+        $self->{_date_1904} = $options->{date_1904};
+    }
+
+    if ( exists $options->{optimization} ) {
+        $self->{_optimization} = $options->{optimization};
+    }
+
+    if ( exists $options->{default_format_properties} ) {
+        $self->{_default_format_properties} =
+          $options->{default_format_properties};
+    }
+
+    if ( exists $options->{excel2003_style} ) {
+        $self->{_excel2003_style} = 1;
+    }
 
     # Structures for the shared strings data.
     $self->{_str_total}  = 0;
@@ -100,12 +125,21 @@ sub new {
     $self->{_str_table}  = {};
     $self->{_str_array}  = [];
 
+    # Formula calculation default settings.
+    $self->{_calc_id}      = 124519;
+    $self->{_calc_mode}    = 'auto';
+    $self->{_calc_on_load} = 1;
+
 
     bless $self, $class;
 
     # Add the default cell format.
-    $self->add_format( xf_index => 0 );
-
+    if ( $self->{_excel2003_style} ) {
+        $self->add_format( xf_index => 0, font_family => 0 );
+    }
+    else {
+        $self->add_format( xf_index => 0 );
+    }
 
     # Check for a filename unless it is an existing filehandle
     if ( not ref $self->{_filename} and $self->{_filename} eq '' ) {
@@ -312,10 +346,11 @@ sub add_worksheet {
         \$self->{_str_unique},
         \$self->{_str_table},
 
-        $self->{_1904},
+        $self->{_date_1904},
         $self->{_palette},
         $self->{_optimization},
         $self->{_tempdir},
+        $self->{_excel2003_style},
 
     );
 
@@ -369,7 +404,7 @@ sub add_chart {
         \$self->{_str_unique},
         \$self->{_str_table},
 
-        $self->{_1904},
+        $self->{_date_1904},
         $self->{_palette},
         $self->{_optimization},
     );
@@ -480,7 +515,18 @@ sub add_format {
     my $self = shift;
 
     my @init_data =
-      ( \$self->{_xf_format_indices}, \$self->{_dxf_format_indices}, @_ );
+      ( \$self->{_xf_format_indices}, \$self->{_dxf_format_indices} );
+
+    # Change default format style for Excel2003/XLS format.
+    if ( $self->{_excel2003_style} ) {
+        push @init_data, ( font => 'Arial', size => 10, theme => -1 );
+    }
+
+    # Add the default format properties.
+    push @init_data, %{$self->{_default_format_properties}};
+
+    # Add the user defined properties.
+    push @init_data, @_;
 
     my $format = Excel::Writer::XLSX::Format->new( @init_data );
 
@@ -521,10 +567,10 @@ sub set_1904 {
     my $self = shift;
 
     if ( defined( $_[0] ) ) {
-        $self->{_1904} = $_[0];
+        $self->{_date_1904} = $_[0];
     }
     else {
-        $self->{_1904} = 1;
+        $self->{_date_1904} = 1;
     }
 }
 
@@ -539,7 +585,7 @@ sub get_1904 {
 
     my $self = shift;
 
-    return $self->{_1904};
+    return $self->{_date_1904};
 }
 
 
@@ -809,6 +855,32 @@ sub add_vba_project {
       unless -e $vba_project;
 
     $self->{_vba_project} = $vba_project;
+}
+
+
+###############################################################################
+#
+# set_calc_mode()
+#
+# Set the Excel caclcuation mode for the workbook.
+#
+sub set_calc_mode {
+
+    my $self    = shift;
+    my $mode    = shift || 'auto';
+    my $calc_id = shift;
+
+    $self->{_calc_mode} = $mode;
+
+    if ( $mode eq 'manual' ) {
+        $self->{_calc_mode}    = 'manual';
+        $self->{_calc_on_load} = 0;
+    }
+    elsif ( $mode eq 'auto_except_tables' ) {
+        $self->{_calc_mode} = 'autoNoTable';
+    }
+
+    $self->{_calc_id} = $calc_id if defined $calc_id;
 }
 
 
@@ -2084,7 +2156,7 @@ sub _write_file_version {
 sub _write_workbook_pr {
 
     my $self                   = shift;
-    my $date_1904              = $self->{_1904};
+    my $date_1904              = $self->{_date_1904};
     my $show_ink_annotation    = 0;
     my $auto_compress_pictures = 0;
     my $default_theme_version  = 124226;
@@ -2208,13 +2280,23 @@ sub _write_sheet {
 sub _write_calc_pr {
 
     my $self            = shift;
-    my $calc_id         = 124519;
+    my $calc_id         = $self->{_calc_id};
     my $concurrent_calc = 0;
 
-    my @attributes = (
-        'calcId'         => $calc_id,
-        'fullCalcOnLoad' => 1
-    );
+    my @attributes = ( calcId => $calc_id );
+
+    if ( $self->{_calc_mode} eq 'manual' ) {
+        push @attributes, 'calcMode'   => 'manual';
+        push @attributes, 'calcOnSave' => 0;
+    }
+    elsif ( $self->{_calc_mode} eq 'autoNoTable' ) {
+        push @attributes, calcMode => 'autoNoTable';
+    }
+
+    if ( $self->{_calc_on_load} ) {
+        push @attributes, 'fullCalcOnLoad' => 1;
+    }
+
 
     $self->xml_empty_tag( 'calcPr', @attributes );
 }

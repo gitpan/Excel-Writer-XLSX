@@ -4,11 +4,11 @@
 #
 # A demo of a Pie chart in Excel::Writer::XLSX.
 #
-# The demo also shows how to set segment colours. It is possible to
-# define chart colors for most types of Excel::Writer::XLSX charts
-# via the add_series() method. However, Pie charts are a special case
-# since each segment is represented as a point so it is necessary to
-# assign formatting to each point in the series.
+# The demo also shows how to set segment colours. It is possible to define
+# chart colors for most types of Excel::Writer::XLSX charts via the
+# add_series() method. However, Pie and Doughtnut charts are a special case
+# since each segment is represented as a point so it is necessary to assign
+# formatting to each point in the series.
 #
 # reverse ('(c)'), March 2011, John McNamara, jmcnamara@cpan.org
 #
@@ -78,6 +78,30 @@ $chart2->set_title( name => 'Pie Chart with user defined colors' );
 
 # Insert the chart into the worksheet (with an offset).
 $worksheet->insert_chart( 'C18', $chart2, 25, 10 );
+
+
+#
+# Create a Pie chart with rotation of the segments.
+#
+
+# Create an example Pie chart like above.
+my $chart3 = $workbook->add_chart( type => 'pie', embedded => 1 );
+
+# Configure the series and add user defined segment colours.
+$chart3->add_series(
+    name       => 'Pie sales data',
+    categories => '=Sheet1!$A$2:$A$4',
+    values     => '=Sheet1!$B$2:$B$4',
+);
+
+# Add a title.
+$chart3->set_title( name => 'Pie Chart with segment rotation' );
+
+# Change the angle/rotation of the first segment.
+$chart3->set_rotation(90);
+
+# Insert the chart into the worksheet (with an offset).
+$worksheet->insert_chart( 'C34', $chart3, 25, 10 );
 
 
 
