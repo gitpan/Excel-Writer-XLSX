@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.78';
+our $VERSION = '0.79';
 
 
 ###############################################################################
@@ -101,7 +101,10 @@ sub new {
     $self->{_header_footer_changed} = 0;
     $self->{_header}                = '';
     $self->{_footer}                = '';
-    $self->{_header_footer_aligns}  = 0;
+    $self->{_header_footer_aligns}  = 1;
+    $self->{_header_footer_scales}  = 1;
+    $self->{_header_images}         = [];
+    $self->{_footer_images}         = [];
 
     $self->{_margin_left}   = 0.7;
     $self->{_margin_right}  = 0.7;
@@ -162,14 +165,16 @@ sub new {
     $self->{_table} = {};
     $self->{_merge} = [];
 
-    $self->{_has_vml}          = 0;
-    $self->{_has_comments}     = 0;
-    $self->{_comments}         = {};
-    $self->{_comments_array}   = [];
-    $self->{_comments_author}  = '';
-    $self->{_comments_visible} = 0;
-    $self->{_vml_shape_id}     = 1024;
-    $self->{_buttons_array}    = [];
+    $self->{_has_vml}             = 0;
+    $self->{_has_header_vml}      = 0;
+    $self->{_has_comments}        = 0;
+    $self->{_comments}            = {};
+    $self->{_comments_array}      = [];
+    $self->{_comments_author}     = '';
+    $self->{_comments_visible}    = 0;
+    $self->{_vml_shape_id}        = 1024;
+    $self->{_buttons_array}       = [];
+    $self->{_header_images_array} = [];
 
     $self->{_autofilter}   = '';
     $self->{_filter_on}    = 0;
@@ -192,6 +197,7 @@ sub new {
     $self->{_external_vml_links}     = [];
     $self->{_external_table_links}   = [];
     $self->{_drawing_links}          = [];
+    $self->{_vml_drawing_links}      = [];
     $self->{_charts}                 = [];
     $self->{_images}                 = [];
     $self->{_tables}                 = [];
@@ -226,7 +232,7 @@ sub new {
         $self->{_margin_bottom}        = 1;
         $self->{_margin_header}        = 0.5;
         $self->{_margin_footer}        = 0.5;
-        $self->{_header_footer_aligns} = 1;
+        $self->{_header_footer_aligns} = 0;
     }
 
     bless $self, $class;
@@ -340,6 +346,9 @@ sub _assemble_xml_file {
 
     # Write the legacyDrawing element.
     $self->_write_legacy_drawing();
+
+    # Write the legacyDrawingHF element.
+    $self->_write_legacy_drawing_hf();
 
     # Write the tableParts element.
     $self->_write_table_parts();
@@ -827,16 +836,59 @@ sub set_paper {
 #
 sub set_header {
 
-    my $self = shift;
-    my $string = $_[0] || '';
+    my $self    = shift;
+    my $string  = $_[0] || '';
+    my $margin  = $_[1] || 0.3;
+    my $options = $_[2] || {};
+
+
+    # Replace the Excel placeholder &[Picture] with the internal &G.
+    $string =~ s/&\[Picture\]/&G/g;
 
     if ( length $string >= 255 ) {
         carp 'Header string must be less than 255 characters';
         return;
     }
 
+    if ( defined $options->{align_with_margins} ) {
+        $self->{_header_footer_aligns} = $options->{align_with_margins};
+    }
+
+    if ( defined $options->{scale_with_doc} ) {
+        $self->{_header_footer_scales} = $options->{scale_with_doc};
+    }
+
+    # Reset the array in case the function is called more than once.
+    $self->{_header_images} = [];
+
+    if ( $options->{image_left} ) {
+        push @{ $self->{_header_images} }, [ $options->{image_left}, 'LH' ];
+    }
+
+    if ( $options->{image_center} ) {
+        push @{ $self->{_header_images} }, [ $options->{image_center}, 'CH' ];
+    }
+
+    if ( $options->{image_right} ) {
+        push @{ $self->{_header_images} }, [ $options->{image_right}, 'RH' ];
+    }
+
+    my $placeholder_count = () = $string =~ /&G/g;
+    my $image_count = @{ $self->{_header_images} };
+
+    if ( $image_count != $placeholder_count ) {
+        warn "Number of header images ($image_count) doesn't match placeholder "
+          . "count ($placeholder_count) in string: $string\n";
+        $self->{_header_images} = [];
+        return;
+    }
+
+    if ( $image_count ) {
+        $self->{_has_header_vml} = 1;
+    }
+
     $self->{_header}                = $string;
-    $self->{_margin_header}         = $_[1] || 0.3;
+    $self->{_margin_header}         = $margin;
     $self->{_header_footer_changed} = 1;
 }
 
@@ -849,16 +901,59 @@ sub set_header {
 #
 sub set_footer {
 
-    my $self = shift;
-    my $string = $_[0] || '';
+    my $self    = shift;
+    my $string  = $_[0] || '';
+    my $margin  = $_[1] || 0.3;
+    my $options = $_[2] || {};
+
+
+    # Replace the Excel placeholder &[Picture] with the internal &G.
+    $string =~ s/&\[Picture\]/&G/g;
 
     if ( length $string >= 255 ) {
         carp 'Footer string must be less than 255 characters';
         return;
     }
 
+    if ( defined $options->{align_with_margins} ) {
+        $self->{_header_footer_aligns} = $options->{align_with_margins};
+    }
+
+    if ( defined $options->{scale_with_doc} ) {
+        $self->{_header_footer_scales} = $options->{scale_with_doc};
+    }
+
+    # Reset the array in case the function is called more than once.
+    $self->{_footer_images} = [];
+
+    if ( $options->{image_left} ) {
+        push @{ $self->{_footer_images} }, [ $options->{image_left}, 'LF' ];
+    }
+
+    if ( $options->{image_center} ) {
+        push @{ $self->{_footer_images} }, [ $options->{image_center}, 'CF' ];
+    }
+
+    if ( $options->{image_right} ) {
+        push @{ $self->{_footer_images} }, [ $options->{image_right}, 'RF' ];
+    }
+
+    my $placeholder_count = () = $string =~ /&G/g;
+    my $image_count = @{ $self->{_footer_images} };
+
+    if ( $image_count != $placeholder_count ) {
+        warn "Number of footer images ($image_count) doesn't match placeholder "
+          . "count ($placeholder_count) in string: $string\n";
+        $self->{_footer_images} = [];
+        return;
+    }
+
+    if ( $image_count ) {
+        $self->{_has_header_vml} = 1;
+    }
+
     $self->{_footer}                = $string;
-    $self->{_margin_footer}         = $_[1] || 0.3;
+    $self->{_margin_footer}         = $margin;
     $self->{_header_footer_changed} = 1;
 }
 
@@ -2039,7 +2134,7 @@ sub write_comment {
     # Check that row and col are valid and store max and min values
     return -2 if $self->_check_dimensions( $row, $col );
 
-    $self->{_has_vml}     = 1;
+    $self->{_has_vml}      = 1;
     $self->{_has_comments} = 1;
 
     # Process the properties of the cell comment.
@@ -4624,7 +4719,7 @@ sub _check_dimensions {
 #   |  1  |(A1)._______|______      |
 #   |     |    |              |     |
 #   |     |    |              |     |
-#   +-----+----|    BITMAP    |-----+
+#   +-----+----|    Object    |-----+
 #   |     |    |              |     |
 #   |  2  |    |______________.     |
 #   |     |            |        (B2)|
@@ -5082,7 +5177,7 @@ sub _prepare_chart {
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height );
+        $height);
 
     # Set the chart name for the embedded object if it has been specified.
     my $name = $chart->{_chart_name};
@@ -5239,6 +5334,8 @@ sub _prepare_image {
     my $height       = shift;
     my $name         = shift;
     my $image_type   = shift;
+    my $x_dpi        = shift;
+    my $y_dpi        = shift;
     my $drawing_type = 2;
     my $drawing;
 
@@ -5248,9 +5345,12 @@ sub _prepare_image {
     $width  *= $x_scale;
     $height *= $y_scale;
 
+    $width  *= 96 / $x_dpi;
+    $height *= 96 / $y_dpi;
+
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height );
+        $height);
 
     # Convert from pixels to emus.
     $width  = int( 0.5 + ( $width * 9_525 ) );
@@ -5276,6 +5376,35 @@ sub _prepare_image {
 
 
     push @{ $self->{_drawing_links} },
+      [ '/image', '../media/image' . $image_id . '.' . $image_type ];
+}
+
+
+###############################################################################
+#
+# _prepare_header_image()
+#
+# Set up an image without a drawing object for header/footer images.
+#
+sub _prepare_header_image {
+
+    my $self       = shift;
+    my $image_id   = shift;
+    my $width      = shift;
+    my $height     = shift;
+    my $name       = shift;
+    my $image_type = shift;
+    my $position   = shift;
+    my $x_dpi      = shift;
+    my $y_dpi      = shift;
+
+    # Strip the extension from the filename.
+    $name =~ s/\.[^\.]+$//;
+
+    push @{ $self->{_header_images_array} },
+      [ $width, $height, $name, $position, $x_dpi, $y_dpi ];
+
+    push @{ $self->{_vml_drawing_links} },
       [ '/image', '../media/image' . $image_id . '.' . $image_type ];
 }
 
@@ -5605,10 +5734,8 @@ sub _prepare_vml_objects {
         }
     }
 
-
     push @{ $self->{_external_vml_links} },
       [ '/vmlDrawing', '../drawings/vmlDrawing' . $vml_drawing_id . '.vml' ];
-
 
     if ( $self->{_has_comments} ) {
 
@@ -5632,6 +5759,26 @@ sub _prepare_vml_objects {
 
     return $count;
 }
+
+
+###############################################################################
+#
+# _prepare_header_vml_objects()
+#
+# Set up external linkage for VML header/footer images.
+#
+sub _prepare_header_vml_objects {
+
+    my $self           = shift;
+    my $vml_header_id  = shift;
+    my $vml_drawing_id = shift;
+
+    $self->{_vml_header_id} = $vml_header_id;
+
+    push @{ $self->{_external_vml_links} },
+      [ '/vmlDrawing', '../drawings/vmlDrawing' . $vml_drawing_id . '.vml' ];
+}
+
 
 ###############################################################################
 #
@@ -7183,13 +7330,16 @@ sub _write_print_options {
 #
 sub _write_header_footer {
 
-    my $self = shift;
+    my $self       = shift;
     my @attributes = ();
 
-    if ($self->{_header_footer_aligns}) {
-        push @attributes,( 'alignWithMargins' => 0 );
+    if ( !$self->{_header_footer_scales} ) {
+        push @attributes, ( 'scaleWithDoc' => 0 );
     }
 
+    if ( !$self->{_header_footer_aligns} ) {
+        push @attributes, ( 'alignWithMargins' => 0 );
+    }
 
     if ( $self->{_header_footer_changed} ) {
         $self->xml_start_tag( 'headerFooter', @attributes );
@@ -8043,6 +8193,29 @@ sub _write_legacy_drawing {
     my @attributes = ( 'r:id' => 'rId' . $id );
 
     $self->xml_empty_tag( 'legacyDrawing', @attributes );
+}
+
+
+
+##############################################################################
+#
+# _write_legacy_drawing_hf()
+#
+# Write the <legacyDrawingHF> element.
+#
+sub _write_legacy_drawing_hf {
+
+    my $self = shift;
+    my $id;
+
+    return unless $self->{_has_header_vml};
+
+    # Increment the relationship id for any drawings or comments.
+    $id = ++$self->{_rel_count};
+
+    my @attributes = ( 'r:id' => 'rId' . $id );
+
+    $self->xml_empty_tag( 'legacyDrawingHF', @attributes );
 }
 
 
