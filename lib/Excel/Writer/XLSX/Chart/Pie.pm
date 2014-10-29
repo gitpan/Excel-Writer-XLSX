@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.79';
+our $VERSION = '0.80';
 
 
 ###############################################################################
@@ -37,6 +37,15 @@ sub new {
 
     $self->{_vary_data_color} = 1;
     $self->{_rotation}        = 0;
+
+    # Set the available data label positions for this chart type.
+    $self->{_label_position_default} = 'best_fit';
+    $self->{_label_positions} = {
+        center      => 'ctr',
+        inside_end  => 'inEnd',
+        outside_end => 'outEnd',
+        best_fit    => 'bestFit',
+    };
 
     bless $self, $class;
     return $self;

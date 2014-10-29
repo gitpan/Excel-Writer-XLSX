@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.79';
+our $VERSION = '0.80';
 
 
 ###############################################################################
@@ -43,6 +43,19 @@ sub new {
     $self->{_x2_axis}->{_defaults}->{num_format} = 'dd/mm/yyyy';
     $self->set_x_axis();
     $self->set_x2_axis();
+
+    # Set the available data label positions for this chart type.
+    $self->{_label_position_default} = 'right';
+    $self->{_label_positions} = {
+        center      => 'ctr',
+        right       => 'r',
+        left        => 'l',
+        above       => 't',
+        below       => 'b',
+        # For backward compatibility.
+        top         => 't',
+        bottom      => 'b',
+    };
 
     bless $self, $class;
     return $self;

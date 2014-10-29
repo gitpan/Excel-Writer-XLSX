@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.79';
+our $VERSION = '0.80';
 
 
 ###############################################################################
@@ -106,6 +106,9 @@ sub new {
     $self->{_smooth_allowed}    = 0;
     $self->{_cross_between}     = 'between';
     $self->{_date_category}     = 0;
+
+    $self->{_label_positions}          = {};
+    $self->{_label_position_default}   = '';
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -1305,27 +1308,42 @@ sub _get_labels_properties {
     # Map user defined label positions to Excel positions.
     if ( my $position = $labels->{position} ) {
 
-        my %positions = (
-            center      => 'ctr',
-            right       => 'r',
-            left        => 'l',
-            top         => 't',
-            above       => 't',
-            bottom      => 'b',
-            below       => 'b',
-            inside_base => 'inBase',
-            inside_end  => 'inEnd',
-            outside_end => 'outEnd',
-            best_fit    => 'bestFit',
-        );
-
-        if ( exists $positions{$position} ) {
-            $labels->{position} = $positions{$position};
+        if ( exists $self->{_label_positions}->{$position} ) {
+            if ($position eq $self->{_label_position_default}) {
+                $labels->{position} = undef;
+            }
+            else {
+                $labels->{position} = $self->{_label_positions}->{$position};
+            }
         }
         else {
-            carp "Unknown label position '$position'";
-            $labels->{position} = $positions{$position};
+            carp "Unsupported label position '$position' for this chart type";
+            return undef
         }
+    }
+
+    # Map the user defined label separator to the Excel separator.
+    if ( my $separator = $labels->{separator} ) {
+
+        my %separators = (
+            ','  => ', ',
+            ';'  => '; ',
+            '.'  => '. ',
+            "\n" => "\n",
+            ' '  => ' '
+        );
+
+        if ( exists $separators{$separator} ) {
+            $labels->{separator} = $separators{$separator};
+        }
+        else {
+            carp "Unsupported label separator";
+            return undef
+        }
+    }
+
+    if ($labels->{font}) {
+        $labels->{font} = $self->_convert_font_args( $labels->{font} );
     }
 
     return $labels;
@@ -2904,6 +2922,27 @@ sub _write_cat_number_format {
     if ( !$self->{_cat_has_num_fmt} && $default_format ) {
         return;
     }
+
+    my @attributes = (
+        'formatCode'   => $format_code,
+        'sourceLinked' => $source_linked,
+    );
+
+    $self->xml_empty_tag( 'c:numFmt', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_number_format()
+#
+# Write the <c:numberFormat> element for data labels.
+#
+sub _write_data_label_number_format {
+
+    my $self          = shift;
+    my $format_code   = shift;
+    my $source_linked = 0;
 
     my @attributes = (
         'formatCode'   => $format_code,
@@ -4607,8 +4646,21 @@ sub _write_d_lbls {
 
     $self->xml_start_tag( 'c:dLbls' );
 
+    # Write the c:numFmt element.
+    if ( $labels->{num_format} ) {
+        $self->_write_data_label_number_format( $labels->{num_format} );
+    }
+
+    # Write the data label font elements.
+    if ($labels->{font} ) {
+        $self->_write_axis_font( $labels->{font} );
+    }
+
     # Write the c:dLblPos element.
     $self->_write_d_lbl_pos( $labels->{position} ) if $labels->{position};
+
+    # Write the c:showLegendKey element.
+    $self->_write_show_legend_key() if $labels->{legend_key};
 
     # Write the c:showVal element.
     $self->_write_show_val() if $labels->{value};
@@ -4622,12 +4674,30 @@ sub _write_d_lbls {
     # Write the c:showPercent element.
     $self->_write_show_percent() if $labels->{percentage};
 
+    # Write the c:separator element.
+    $self->_write_separator($labels->{separator}) if $labels->{separator};
+
     # Write the c:showLeaderLines element.
     $self->_write_show_leader_lines() if $labels->{leader_lines};
 
     $self->xml_end_tag( 'c:dLbls' );
 }
 
+##############################################################################
+#
+# _write_show_legend_key()
+#
+# Write the <c:showLegendKey> element.
+#
+sub _write_show_legend_key {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:showLegendKey', @attributes );
+}
 
 ##############################################################################
 #
@@ -4696,6 +4766,19 @@ sub _write_show_percent {
     $self->xml_empty_tag( 'c:showPercent', @attributes );
 }
 
+##############################################################################
+#
+# _write_separator()
+#
+# Write the <c:separator> element.
+#
+sub _write_separator {
+
+    my $self = shift;
+    my $data = shift;
+
+    $self->xml_data_element( 'c:separator', $data );
+}
 
 ##############################################################################
 #
@@ -5609,7 +5692,7 @@ Set the number format for the axis. (Applicable to category and value axes).
     $chart->set_x_axis( num_format => '#,##0.00' );
     $chart->set_y_axis( num_format => '0.00%'    );
 
-The number format is similar to the Worksheet Cell Format C<num_format> apart from the fact that a format index cannot be used. The explicit format string must be used as show above. See L<Excel::Writer::XLSX/set_num_format()> for more information.
+The number format is similar to the Worksheet Cell Format C<num_format> apart from the fact that a format index cannot be used. The explicit format string must be used as shown above. See L<Excel::Writer::XLSX/set_num_format()> for more information.
 
 =item * C<min>
 
@@ -6233,7 +6316,7 @@ Several of these properties can be set in one go:
         },
     );
 
-Trendlines cannot be added to series in a stacked chart or pie chart, radar chart, doughtnut or (when implemented) to 3D, or surface charts.
+Trendlines cannot be added to series in a stacked chart or pie chart, radar chart, doughnut or (when implemented) to 3D, or surface charts.
 
 =head2 Error Bars
 
@@ -6332,9 +6415,12 @@ The following properties can be set for C<data_labels> formats in a chart.
     category
     series_name
     position
-    leader_lines
     percentage
-
+    leader_lines
+    separator
+    legend_key
+    num_format
+    font
 
 The C<value> property turns on the I<Value> data label for a series.
 
@@ -6365,19 +6451,23 @@ The C<position> property is used to position the data label for a series.
         data_labels => { value => 1, position => 'center' },
     );
 
-Valid positions are:
+In Excel the data label positions vary for different chart types. The allowable positions are:
 
-    center
-    right
-    left
-    top
-    bottom
-    above           # Same as top
-    below           # Same as bottom
-    inside_base     # Mainly for Column/Bar charts.
-    inside_end      # Pie chart mainly.
-    outside_end     # Pie chart mainly.
-    best_fit        # Pie chart mainly.
+    |  Position     |  Line     |  Bar      |  Pie      |  Area     |
+    |               |  Scatter  |  Column   |  Doughnut |  Radar    |
+    |               |  Stock    |           |           |           |
+    |---------------|-----------|-----------|-----------|-----------|
+    |  center       |  Yes      |  Yes      |  Yes      |  Yes*     |
+    |  right        |  Yes*     |           |           |           |
+    |  left         |  Yes      |           |           |           |
+    |  above        |  Yes      |           |           |           |
+    |  below        |  Yes      |           |           |           |
+    |  inside_base  |           |  Yes      |           |           |
+    |  inside_end   |           |  Yes      |  Yes      |           |
+    |  outside_end  |           |  Yes*     |  Yes      |           |
+    |  best_fit     |           |           |  Yes*     |           |
+
+Note: The * indicates the default position for each chart type in Excel, if a position isn't specified.
 
 The C<percentage> property is used to turn on the display of data labels as a I<Percentage> for a series. It is mainly used for pie and doughnut charts.
 
@@ -6394,6 +6484,52 @@ The C<leader_lines> property is used to turn on  I<Leader Lines> for the data la
     );
 
 Note: Even when leader lines are turned on they aren't automatically visible in Excel or Excel::Writer::XLSX. Due to an Excel limitation (or design) leader lines only appear if the data label is moved manually or if the data labels are very close and need to be adjusted automatically.
+
+The C<separator> property is used to change the separator between multiple data label items:
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { percentage => 1 },
+        data_labels => { value => 1, category => 1, separator => "\n" },
+    );
+
+The separator value must be one of the following strings:
+
+            ','
+            ';'
+            '.'
+            "\n"
+            ' '
+
+The C<legend_key> property is used to turn on  I<Legend Key> for the data label for a series:
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1, legend_key => 1 },
+    );
+
+
+The C<num_format> property is used to set the number format for the data labels.
+
+    $chart->add_series(
+        values      => '=Sheet1!$A$1:$A$5',
+        data_labels => { value => 1, num_format => '#,##0.00' },
+    );
+
+The number format is similar to the Worksheet Cell Format C<num_format> apart from the fact that a format index cannot be used. The explicit format string must be used as shown above. See L<Excel::Writer::XLSX/set_num_format()> for more information.
+
+The C<font> property is used to set the font properties of the data labels in a series:
+
+    $chart->add_series(
+        values      => '=Sheet1!$A$1:$A$5',
+        data_labels => {
+            value => 1,
+            font  => { name => 'Consolas' }
+        },
+    );
+
+See the L</CHART FONTS> section below.
+
 
 =head2 Points
 
@@ -6584,7 +6720,7 @@ The C<fill> format is generally used in conjunction with a C<border> format whic
 
 =head1 CHART FONTS
 
-The following font properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart titles, axis labels and axis numbering. They correspond to the equivalent Worksheet cell Format object properties. See L<Excel::Writer::XLSX/FORMAT_METHODS> for more information.
+The following font properties can be set for any chart object that they apply to (and that are supported by Excel::Writer::XLSX) such as chart titles, axis labels, axis numbering and data labels. They correspond to the equivalent Worksheet cell Format object properties. See L<Excel::Writer::XLSX/FORMAT_METHODS> for more information.
 
     name
     size

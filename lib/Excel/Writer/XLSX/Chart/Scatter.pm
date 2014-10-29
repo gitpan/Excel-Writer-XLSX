@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.79';
+our $VERSION = '0.80';
 
 
 ###############################################################################
@@ -40,6 +40,19 @@ sub new {
     $self->{_horiz_val_axis}   = 0;
     $self->{_val_axis_postion} = 'b';
     $self->{_smooth_allowed}   = 1;
+
+    # Set the available data label positions for this chart type.
+    $self->{_label_position_default} = 'right';
+    $self->{_label_positions} = {
+        center      => 'ctr',
+        right       => 'r',
+        left        => 'l',
+        above       => 't',
+        below       => 'b',
+        # For backward compatibility.
+        top         => 't',
+        bottom      => 'b',
+    };
 
     bless $self, $class;
     return $self;

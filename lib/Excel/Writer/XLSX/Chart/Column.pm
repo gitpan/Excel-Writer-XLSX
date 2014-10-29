@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.79';
+our $VERSION = '0.80';
 
 
 ###############################################################################
@@ -45,6 +45,14 @@ sub new {
 
     $self->set_y_axis();
 
+    # Set the available data label positions for this chart type.
+    $self->{_label_position_default} = 'outside_end';
+    $self->{_label_positions} = {
+        center      => 'ctr',
+        inside_base => 'inBase',
+        inside_end  => 'inEnd',
+        outside_end => 'outEnd',
+    };
 
     bless $self, $class;
 
